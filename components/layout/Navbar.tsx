@@ -36,7 +36,7 @@ export function Navbar() {
       <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <Link href="/" className="flex items-center gap-2 group">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-saffron to-saffron-dark text-white font-bold text-lg shadow-lg shadow-saffron/30 transition-transform group-hover:scale-105">
-            भ
+            J
           </div>
           <span className="text-xl font-bold tracking-tight">
             Joblay<span className="text-saffron"> Jobs</span>
