@@ -6,7 +6,7 @@ export function Footer() {
           The End
         </p>
         <p className="text-sm text-muted-foreground/70 mt-3">
-          Bharat Jobs — direct outreach. No candidate accounts. No middle layer.
+          Joblay — direct outreach. No candidate accounts. No middle layer.
         </p>
       </div>
     </footer>

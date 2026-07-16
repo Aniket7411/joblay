@@ -1,8 +1,8 @@
-# Bharat Jobs — Project Brief
+# Joblay — Project Brief
 
 ## Overview
 
-**Bharat Jobs** is a crisp, minimalist job board platform. Candidates browse and contact recruiters directly — no candidate accounts. Recruiters authenticate to post and manage job descriptions (JDs).
+**Joblay** is a crisp, minimalist job board platform. Candidates browse and contact recruiters directly — no candidate accounts. Recruiters authenticate to post and manage job descriptions (JDs).
 
 ## Tech Stack
 

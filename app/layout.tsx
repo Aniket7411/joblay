@@ -17,8 +17,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Bharat Jobs — Find Roles, Reach Out Directly",
-    template: "%s | Bharat Jobs",
+    default: "Joblay — Find Roles, Reach Out Directly",
+    template: "%s | Joblay",
   },
   description:
     "A crisp job board for India. Filter by location, profile, and industry. Contact recruiters directly — no sign-up required.",

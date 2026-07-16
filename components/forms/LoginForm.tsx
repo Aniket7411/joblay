@@ -34,7 +34,7 @@ export function LoginForm() {
       body: JSON.stringify(data),
     });
     if (result.success && result.data) {
-      localStorage.setItem("bharat_recruiter", JSON.stringify(result.data));
+      localStorage.setItem("joblay_recruiter", JSON.stringify(result.data));
       router.push("/dashboard");
     }
   };

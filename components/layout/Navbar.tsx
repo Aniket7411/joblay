@@ -39,7 +39,7 @@ export function Navbar() {
             भ
           </div>
           <span className="text-xl font-bold tracking-tight">
-            Bharat<span className="text-saffron"> Jobs</span>
+            Joblay<span className="text-saffron"> Jobs</span>
           </span>
         </Link>
 

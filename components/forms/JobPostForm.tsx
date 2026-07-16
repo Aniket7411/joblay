@@ -45,7 +45,7 @@ export function JobPostForm() {
   const nicheTags = getNicheTags(industry, subRole);
 
   useEffect(() => {
-    const stored = localStorage.getItem("bharat_recruiter");
+    const stored = localStorage.getItem("joblay_recruiter");
     if (!stored) {
       router.push("/login");
       return;

@@ -18,7 +18,7 @@ export function DashboardClient() {
   const { execute, loading } = useFetch<JobPosting[]>();
 
   useEffect(() => {
-    const stored = localStorage.getItem("bharat_recruiter");
+    const stored = localStorage.getItem("joblay_recruiter");
     if (!stored) {
       router.push("/login");
       return;
@@ -45,7 +45,7 @@ export function DashboardClient() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("bharat_recruiter");
+    localStorage.removeItem("joblay_recruiter");
     router.push("/login");
   };
 
