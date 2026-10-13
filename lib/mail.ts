@@ -60,7 +60,13 @@ ${body}
 </td></tr></table></td></tr></table></body></html>`;
 }
 
-async function send(to: string, subject: string, html: string, text: string) {
+async function send(
+  to: string,
+  subject: string,
+  html: string,
+  text: string,
+  replyTo?: string
+) {
   if (!isMailConfigured()) {
     console.info(`[mail:demo] To: ${to} | ${subject}\n${text}`);
     return;
@@ -68,6 +74,7 @@ async function send(to: string, subject: string, html: string, text: string) {
   await getTransporter().sendMail({
     from: process.env.SMTP_FROM || process.env.SMTP_USER,
     to,
+    replyTo,
     subject,
     html,
     text,
@@ -108,5 +115,29 @@ export async function sendWelcomeEmail(
     "Welcome to Joblay",
     html,
     `Welcome to Joblay, ${name}. Your dashboard: ${dashboard}`
+  );
+}
+
+/** Forwards a contact-form message to the site inbox; replies go to the sender. */
+export async function sendContactEmail(input: {
+  name: string;
+  email: string;
+  topicLabel: string;
+  message: string;
+}): Promise<void> {
+  const to = process.env.CONTACT_TO_EMAIL || process.env.SMTP_USER || "";
+  const subject = `[Joblay] ${input.topicLabel} — ${input.name}`;
+  const html = layout(
+    escapeHtml(input.topicLabel),
+    `<p style="font-size:14px;line-height:1.6"><strong>From:</strong> ${escapeHtml(input.name)} &lt;${escapeHtml(input.email)}&gt;</p>
+<div style="font-size:14px;line-height:1.6;white-space:pre-wrap;border-left:3px solid #f97316;padding-left:12px;margin-top:16px">${escapeHtml(input.message)}</div>
+<p style="font-size:12px;color:#666;margin-top:24px">Reply to this email to respond directly to the sender.</p>`
+  );
+  await send(
+    to,
+    subject,
+    html,
+    `From: ${input.name} <${input.email}>\nTopic: ${input.topicLabel}\n\n${input.message}`,
+    input.email
   );
 }

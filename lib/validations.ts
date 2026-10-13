@@ -100,3 +100,25 @@ export type LoginFormData = z.infer<typeof loginSchema>;
 export type RegisterFormData = z.infer<typeof registerSchema>;
 export type ForgotPasswordFormData = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordFormData = z.infer<typeof resetPasswordSchema>;
+
+export const contactTopics = [
+  { value: "general", label: "General question" },
+  { value: "report", label: "Report a job listing" },
+  { value: "recruiter", label: "Recruiter support" },
+  { value: "privacy", label: "Privacy / data request" },
+] as const;
+
+export const contactSchema = z.object({
+  name: z.string().trim().min(2, "Please enter your name").max(80),
+  email: z.string().email("Please enter a valid email address"),
+  topic: z.enum(["general", "report", "recruiter", "privacy"]),
+  message: z
+    .string()
+    .trim()
+    .min(10, "Message must be at least 10 characters")
+    .max(3000, "Message must be under 3000 characters"),
+  // Honeypot — real users never fill this in.
+  website: z.string().max(200).optional(),
+});
+
+export type ContactFormData = z.infer<typeof contactSchema>;
