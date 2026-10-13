@@ -34,8 +34,8 @@ export function LoginForm() {
       body: JSON.stringify(data),
     });
     if (result.success && result.data) {
-      localStorage.setItem("joblay_recruiter", JSON.stringify(result.data));
       router.push("/dashboard");
+      router.refresh();
     }
   };
 
@@ -104,9 +104,6 @@ export function LoginForm() {
           <Link href="/register" className="text-saffron font-medium hover:underline">
             Create account
           </Link>
-        </p>
-        <p className="text-center text-xs text-muted-foreground">
-          Demo: recruiter@demo.com / Demo@1234
         </p>
       </form>
     </Card>

@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Check, Copy, Mail, Phone, X } from "lucide-react";
+import { motion } from "framer-motion";
+import { Check, Copy, Mail, Paperclip, Phone } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -73,6 +73,18 @@ export function JobCard({ job, index = 0 }: JobCardProps) {
             </li>
           ))}
         </ul>
+
+        {job.attachmentUrl && (
+          <a
+            href={job.attachmentUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-saffron hover:underline mb-3"
+          >
+            <Paperclip className="h-3.5 w-3.5" />
+            View full JD
+          </a>
+        )}
 
         {job.contact.name && (
           <p className="text-xs text-muted-foreground mb-3">

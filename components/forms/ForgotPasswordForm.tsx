@@ -42,8 +42,8 @@ export function ForgotPasswordForm() {
         <CheckCircle2 className="h-16 w-16 text-india-green mx-auto mb-4" />
         <h3 className="text-xl font-semibold">Check your email</h3>
         <p className="text-muted-foreground mt-2 text-sm">
-          If an account exists, a reset link has been sent. In demo mode, check
-          the server console for the link.
+          If an account exists for that email, we&apos;ve sent a reset link.
+          It expires in 1 hour — check your spam folder if you don&apos;t see it.
         </p>
         <Link href="/login">
           <Button variant="outline" className="mt-6">

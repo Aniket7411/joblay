@@ -1,108 +1,90 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
-import { mockStore } from "@/lib/data/mockStore";
-import type { JobPosting } from "@/types";
+import { fail, ok, serverError, validationFailed } from "@/lib/api";
+import { getSessionRecruiterId } from "@/lib/auth/session";
+import {
+  getNicheTags,
+  getSubRoles,
+  industries,
+  jobProfiles,
+  locations,
+} from "@/lib/data/filterHierarchy";
+import { createJob, findRecruiterById, listJobs } from "@/lib/repository";
+import { isOwnAttachmentUrl } from "@/lib/supabase";
+import { jobPostSchema } from "@/lib/validations";
 
 const querySchema = z.object({
-  recruiterId: z.string().optional(),
-  location: z.string().optional(),
-  jobProfile: z.string().optional(),
-  industry: z.string().optional(),
-  subRole: z.string().optional(),
-  tags: z.string().optional(),
-  search: z.string().optional(),
+  mine: z.string().optional(),
+  location: z.string().max(100).optional(),
+  jobProfile: z.string().max(100).optional(),
+  industry: z.string().max(100).optional(),
+  subRole: z.string().max(100).optional(),
+  tags: z.string().max(1000).optional(),
+  search: z.string().max(200).optional(),
 });
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const parsed = querySchema.safeParse({
-    recruiterId: searchParams.get("recruiterId") ?? undefined,
-    location: searchParams.get("location") ?? undefined,
-    jobProfile: searchParams.get("jobProfile") ?? undefined,
-    industry: searchParams.get("industry") ?? undefined,
-    subRole: searchParams.get("subRole") ?? undefined,
-    tags: searchParams.get("tags") ?? undefined,
-    search: searchParams.get("search") ?? undefined,
-  });
+  try {
+    const { searchParams } = new URL(request.url);
+    const parsed = querySchema.safeParse(Object.fromEntries(searchParams));
+    if (!parsed.success) return fail("Invalid query parameters", 400);
 
-  if (!parsed.success) {
-    return NextResponse.json(
-      { success: false, message: "Invalid query parameters" },
-      { status: 400 }
-    );
+    const { mine, tags, ...filters } = parsed.data;
+
+    let recruiterId: string | undefined;
+    if (mine) {
+      recruiterId = (await getSessionRecruiterId()) ?? undefined;
+      if (!recruiterId) return fail("Not signed in", 401);
+    }
+
+    const jobs = await listJobs({
+      ...filters,
+      recruiterId,
+      tags: tags ? tags.split(",").filter(Boolean) : undefined,
+    });
+    return ok("Jobs fetched", jobs);
+  } catch (err) {
+    return serverError(err, "jobs:GET");
   }
-
-  const { recruiterId, location, jobProfile, industry, subRole, tags, search } =
-    parsed.data;
-
-  let results: JobPosting[] = recruiterId
-    ? mockStore.jobs.getByRecruiter(recruiterId)
-    : mockStore.jobs.getAll();
-
-  if (location) results = results.filter((j) => j.location === location);
-  if (jobProfile) results = results.filter((j) => j.jobProfile === jobProfile);
-  if (industry) results = results.filter((j) => j.industry === industry);
-  if (subRole) results = results.filter((j) => j.subRole === subRole);
-  if (tags) {
-    const tagList = tags.split(",");
-    results = results.filter((j) =>
-      tagList.some((t) => j.tags.includes(t))
-    );
-  }
-  if (search) {
-    const q = search.toLowerCase();
-    results = results.filter((j) =>
-      [j.title, j.company, j.location, j.industry, ...j.tags]
-        .join(" ")
-        .toLowerCase()
-        .includes(q)
-    );
-  }
-
-  return NextResponse.json({
-    success: true,
-    message: "Jobs fetched",
-    data: results,
-  });
 }
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { jobPostSchema } = await import("@/lib/validations");
-    const parsed = jobPostSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Validation failed",
-          errors: parsed.error.flatten().fieldErrors,
-        },
-        { status: 400 }
-      );
+    const recruiterId = await getSessionRecruiterId();
+    if (!recruiterId || !(await findRecruiterById(recruiterId))) {
+      return fail("Please sign in to post a job", 401);
     }
 
-    const { recruiterId } = body as { recruiterId?: string };
-    if (!recruiterId) {
-      return NextResponse.json(
-        { success: false, message: "Recruiter authentication required" },
-        { status: 401 }
-      );
-    }
-
+    const parsed = jobPostSchema.safeParse(await request.json());
+    if (!parsed.success) return validationFailed(parsed.error);
     const data = parsed.data;
-    const job: JobPosting = {
-      id: `job-${crypto.randomUUID().slice(0, 8)}`,
+
+    // Keep posted values inside the known filter hierarchy so they stay
+    // discoverable through the candidate filters.
+    const allowedTags = getNicheTags(data.industry, data.subRole);
+    if (
+      !(locations as readonly string[]).includes(data.location) ||
+      !(jobProfiles as readonly string[]).includes(data.jobProfile) ||
+      !(industries as readonly string[]).includes(data.industry) ||
+      !getSubRoles(data.industry).includes(data.subRole) ||
+      !data.tags.every((t) => allowedTags.includes(t))
+    ) {
+      return fail("Invalid location, profile, industry, sub-role or tags", 400);
+    }
+
+    if (data.attachmentUrl && !isOwnAttachmentUrl(data.attachmentUrl)) {
+      return fail("Invalid attachment", 400);
+    }
+
+    const job = await createJob({
       recruiterId,
-      title: data.title,
-      company: data.company,
+      title: data.title.trim(),
+      company: data.company.trim(),
       location: data.location,
       jobProfile: data.jobProfile,
       industry: data.industry,
       subRole: data.subRole,
       tags: data.tags,
-      description: data.description,
+      description: data.description.trim(),
       criteria: data.criteria
         .split("\n")
         .map((c) => c.trim())
@@ -112,20 +94,11 @@ export async function POST(request: Request) {
         email: data.contactEmail?.trim() || undefined,
         phone: data.contactPhone?.trim() || undefined,
       },
-      createdAt: new Date().toISOString(),
-    };
-
-    mockStore.jobs.create(job);
-
-    return NextResponse.json({
-      success: true,
-      message: "Job posted successfully",
-      data: job,
+      attachmentUrl: data.attachmentUrl || undefined,
     });
-  } catch {
-    return NextResponse.json(
-      { success: false, message: "Invalid request body" },
-      { status: 400 }
-    );
+
+    return ok("Job posted successfully", job, { status: 201 });
+  } catch (err) {
+    return serverError(err, "jobs:POST");
   }
 }

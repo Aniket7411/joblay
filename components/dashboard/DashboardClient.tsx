@@ -11,45 +11,30 @@ import { Badge } from "@/components/ui/Badge";
 import { useFetch } from "@/hooks/useFetch";
 import type { JobPosting, Recruiter } from "@/types";
 
-export function DashboardClient() {
+export function DashboardClient({ recruiter }: { recruiter: Recruiter }) {
   const router = useRouter();
-  const [recruiter, setRecruiter] = useState<Recruiter | null>(null);
   const [jobs, setJobs] = useState<JobPosting[]>([]);
   const { execute, loading } = useFetch<JobPosting[]>();
 
   useEffect(() => {
-    const stored = localStorage.getItem("joblay_recruiter");
-    if (!stored) {
-      router.push("/login");
-      return;
-    }
-    const parsed = JSON.parse(stored) as Recruiter;
-    setRecruiter(parsed);
-    loadJobs(parsed.id);
-  }, [router]);
-
-  const loadJobs = async (recruiterId: string) => {
-    const result = await execute(`/api/jobs?recruiterId=${recruiterId}`);
-    if (result.success && result.data) setJobs(result.data);
-  };
+    execute("/api/jobs?mine=1").then((result) => {
+      if (result.success && result.data) setJobs(result.data);
+    });
+  }, [execute]);
 
   const handleDelete = async (id: string) => {
-    if (!recruiter || !confirm("Delete this job posting?")) return;
-    const res = await fetch(`/api/jobs/${id}`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ recruiterId: recruiter.id }),
-    });
+    if (!confirm("Delete this job posting?")) return;
+    const res = await fetch(`/api/jobs/${id}`, { method: "DELETE" });
     const json = await res.json();
     if (json.success) setJobs((prev) => prev.filter((j) => j.id !== id));
+    else alert(json.message || "Could not delete job");
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("joblay_recruiter");
+  const handleLogout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
     router.push("/login");
+    router.refresh();
   };
-
-  if (!recruiter) return null;
 
   return (
     <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-10 lg:py-16">

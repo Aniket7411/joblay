@@ -1,48 +1,25 @@
-import { NextResponse } from "next/server";
-import { mockStore } from "@/lib/data/mockStore";
+import { fail, ok, serverError, validationFailed } from "@/lib/api";
+import { verifyPassword } from "@/lib/auth/password";
+import { setSessionCookie } from "@/lib/auth/session";
+import { findRecruiterByEmail, publicRecruiter } from "@/lib/repository";
 import { loginSchema } from "@/lib/validations";
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const parsed = loginSchema.safeParse(body);
+    const parsed = loginSchema.safeParse(await request.json());
+    if (!parsed.success) return validationFailed(parsed.error);
 
-    if (!parsed.success) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Validation failed",
-          errors: parsed.error.flatten().fieldErrors,
-        },
-        { status: 400 }
-      );
-    }
-
-    const recruiter = mockStore.recruiters.findByEmail(parsed.data.email);
+    const recruiter = await findRecruiterByEmail(parsed.data.email);
     if (
       !recruiter ||
-      !mockStore.recruiters.verifyPassword(parsed.data.email, parsed.data.password)
+      !(await verifyPassword(parsed.data.password, recruiter.passwordHash))
     ) {
-      return NextResponse.json(
-        { success: false, message: "Invalid email or password" },
-        { status: 401 }
-      );
+      return fail("Invalid email or password", 401);
     }
 
-    return NextResponse.json({
-      success: true,
-      message: "Signed in successfully",
-      data: {
-        id: recruiter.id,
-        name: recruiter.name,
-        email: recruiter.email,
-        company: recruiter.company,
-      },
-    });
-  } catch {
-    return NextResponse.json(
-      { success: false, message: "Invalid request body" },
-      { status: 400 }
-    );
+    await setSessionCookie(recruiter.id);
+    return ok("Signed in successfully", publicRecruiter(recruiter));
+  } catch (err) {
+    return serverError(err, "auth/login");
   }
 }

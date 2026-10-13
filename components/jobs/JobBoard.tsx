@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { AnimatePresence } from "framer-motion";
 import { JobCard } from "@/components/jobs/JobCard";
 import { FilterBar } from "@/components/jobs/FilterBar";
@@ -54,6 +55,7 @@ function filterJobs(jobs: JobPosting[], filters: JobFilters): JobPosting[] {
 export function JobBoard() {
   const [jobs, setJobs] = useState<JobPosting[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [filters, setFilters] = useState<JobFilters>(emptyFilters);
   const debouncedSearch = useDebounce(filters.search, 250);
 
@@ -64,6 +66,9 @@ export function JobBoard() {
         const res = await fetch("/api/jobs");
         const json = await res.json();
         if (json.success) setJobs(json.data ?? []);
+        else setLoadError(true);
+      } catch {
+        setLoadError(true);
       } finally {
         setLoading(false);
       }
@@ -93,6 +98,23 @@ export function JobBoard() {
             {Array.from({ length: 6 }).map((_, i) => (
               <DestinationCardSkeleton key={i} />
             ))}
+          </div>
+        ) : loadError ? (
+          <div className="text-center py-20">
+            <p className="text-lg font-medium">Couldn&apos;t load jobs</p>
+            <p className="text-muted-foreground mt-2">
+              Please refresh the page or try again in a moment.
+            </p>
+          </div>
+        ) : jobs.length === 0 ? (
+          <div className="text-center py-20">
+            <p className="text-lg font-medium">No jobs posted yet</p>
+            <p className="text-muted-foreground mt-2">
+              Recruiters — be the first to post a role.
+            </p>
+            <Link href="/dashboard/post">
+              <Button className="mt-4">Post a Job</Button>
+            </Link>
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-20">

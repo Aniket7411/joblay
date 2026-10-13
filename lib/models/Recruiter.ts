@@ -3,6 +3,8 @@ import type { Recruiter } from "@/types";
 
 export interface RecruiterDocument extends Omit<Recruiter, "id">, mongoose.Document {
   passwordHash: string;
+  resetTokenHash?: string;
+  resetTokenExpires?: Date;
 }
 
 const recruiterSchema = new Schema<RecruiterDocument>(
@@ -11,6 +13,8 @@ const recruiterSchema = new Schema<RecruiterDocument>(
     email: { type: String, required: true, unique: true, lowercase: true, index: true },
     company: { type: String, trim: true },
     passwordHash: { type: String, required: true },
+    resetTokenHash: { type: String, index: true, sparse: true },
+    resetTokenExpires: { type: Date },
   },
   { timestamps: true }
 );

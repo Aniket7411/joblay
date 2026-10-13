@@ -17,6 +17,7 @@ export interface JobPosting {
   description: string;
   criteria: string[];
   contact: RecruiterContact;
+  attachmentUrl?: string;
   createdAt: string;
 }
 

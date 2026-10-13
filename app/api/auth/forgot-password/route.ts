@@ -1,46 +1,40 @@
-import { NextResponse } from "next/server";
-import { mockStore } from "@/lib/data/mockStore";
+import { ok, serverError, validationFailed } from "@/lib/api";
+import { createResetToken } from "@/lib/auth/password";
 import { sendPasswordResetEmail } from "@/lib/mail";
+import { findRecruiterByEmail, setResetToken } from "@/lib/repository";
 import { forgotPasswordSchema } from "@/lib/validations";
+
+const RESET_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const parsed = forgotPasswordSchema.safeParse(body);
+    const parsed = forgotPasswordSchema.safeParse(await request.json());
+    if (!parsed.success) return validationFailed(parsed.error);
 
-    if (!parsed.success) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Validation failed",
-          errors: parsed.error.flatten().fieldErrors,
-        },
-        { status: 400 }
-      );
-    }
-
-    const recruiter = mockStore.recruiters.findByEmail(parsed.data.email);
+    const recruiter = await findRecruiterByEmail(parsed.data.email);
     if (recruiter) {
-      const token = crypto.randomUUID();
-      mockStore.resetTokens.set(token, {
-        email: parsed.data.email,
-        expires: Date.now() + 3600_000,
-      });
+      const { token, tokenHash } = createResetToken();
+      await setResetToken(
+        recruiter.id,
+        tokenHash,
+        new Date(Date.now() + RESET_TTL_MS)
+      );
 
-      const baseUrl =
-        process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+      const baseUrl = (
+        process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin
+      ).replace(/\/$/, "");
       const resetLink = `${baseUrl}/reset-password?token=${token}`;
-      await sendPasswordResetEmail(parsed.data.email, resetLink);
+
+      try {
+        await sendPasswordResetEmail(recruiter.email, resetLink);
+      } catch (err) {
+        console.error("[auth/forgot-password] email failed", err);
+      }
     }
 
-    return NextResponse.json({
-      success: true,
-      message: "If an account exists, a reset link has been sent.",
-    });
-  } catch {
-    return NextResponse.json(
-      { success: false, message: "Invalid request body" },
-      { status: 400 }
-    );
+    // Same response either way so accounts can't be enumerated.
+    return ok("If an account exists, a reset link has been sent.");
+  } catch (err) {
+    return serverError(err, "auth/forgot-password");
   }
 }

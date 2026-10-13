@@ -33,6 +33,7 @@ const jobPostingSchema = new Schema<JobPostingDocument>(
     tags: { type: [String], required: true, index: true },
     description: { type: String, required: true },
     criteria: { type: [String], required: true },
+    attachmentUrl: { type: String, trim: true },
     contact: {
       type: contactSchema,
       required: true,
@@ -49,6 +50,7 @@ const jobPostingSchema = new Schema<JobPostingDocument>(
 
 jobPostingSchema.index({ industry: 1, subRole: 1, tags: 1 });
 jobPostingSchema.index({ location: 1, jobProfile: 1, industry: 1 });
+jobPostingSchema.index({ createdAt: -1 });
 
 export const JobPostingModel: Model<JobPostingDocument> =
   mongoose.models.JobPosting ??

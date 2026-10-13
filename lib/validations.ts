@@ -28,6 +28,7 @@ export const jobPostSchema = z
       .string()
       .min(10, "Add at least one criterion")
       .max(2000),
+    attachmentUrl: z.string().url().max(500).optional().or(z.literal("")),
     ...contactFields.shape,
   })
   .refine(

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Briefcase,
@@ -30,6 +30,20 @@ export function Navbar() {
   const [open, setOpen] = useState(false);
   const { theme, setTheme } = useTheme();
   const mounted = useMounted();
+  const [signedIn, setSignedIn] = useState(false);
+
+  // Re-check on navigation so the header reflects sign-in / sign-out.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/auth/me")
+      .then((res) => {
+        if (!cancelled) setSignedIn(res.ok);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname]);
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/60 bg-background/80 backdrop-blur-xl">
@@ -87,12 +101,14 @@ export function Navbar() {
             </button>
           )}
 
-          <Link href="/login" className="hidden sm:block">
-            <Button variant="ghost" size="sm">
-              <LogIn className="h-4 w-4" />
-              Sign In
-            </Button>
-          </Link>
+          {!signedIn && (
+            <Link href="/login" className="hidden sm:block">
+              <Button variant="ghost" size="sm">
+                <LogIn className="h-4 w-4" />
+                Sign In
+              </Button>
+            </Link>
+          )}
 
           <Link href="/dashboard/post" className="hidden sm:block">
             <Button size="sm">
@@ -137,11 +153,20 @@ export function Navbar() {
                 <LayoutDashboard className="h-4 w-4" />
                 Dashboard
               </Link>
-              <Link href="/login" onClick={() => setOpen(false)}>
-                <Button variant="outline" className="w-full mt-2">
-                  Recruiter Sign In
-                </Button>
-              </Link>
+              {signedIn ? (
+                <Link href="/dashboard/post" onClick={() => setOpen(false)}>
+                  <Button className="w-full mt-2">
+                    <Plus className="h-4 w-4" />
+                    Post Job
+                  </Button>
+                </Link>
+              ) : (
+                <Link href="/login" onClick={() => setOpen(false)}>
+                  <Button variant="outline" className="w-full mt-2">
+                    Recruiter Sign In
+                  </Button>
+                </Link>
+              )}
             </div>
           </motion.div>
         )}

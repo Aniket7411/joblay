@@ -1,56 +1,42 @@
+import { randomBytes, scryptSync } from "node:crypto";
 import type { JobPosting, Recruiter } from "@/types";
 import { seedJobs } from "./jobs";
 
-const jobs: JobPosting[] = [...seedJobs];
-const recruiters: Recruiter[] = [
-  {
-    id: "rec-demo",
-    name: "Demo Recruiter",
-    email: "recruiter@demo.com",
-    company: "Demo Corp",
-    createdAt: new Date().toISOString(),
-  },
-];
+/**
+ * In-memory fallback used only when MONGODB_URI is not set (local dev).
+ * Data resets whenever the server restarts.
+ */
 
-const passwords = new Map<string, string>([
-  ["recruiter@demo.com", "Demo@1234"],
-]);
+function demoHash(password: string): string {
+  const salt = randomBytes(16).toString("hex");
+  return `${salt}:${scryptSync(password, salt, 64).toString("hex")}`;
+}
 
-export const mockStore = {
-  jobs: {
-    getAll: () => [...jobs].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-    getByRecruiter: (recruiterId: string) =>
-      jobs
-        .filter((j) => j.recruiterId === recruiterId)
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-    getById: (id: string) => jobs.find((j) => j.id === id),
-    create: (job: JobPosting) => {
-      jobs.unshift(job);
-      return job;
+interface MockRecruiter extends Recruiter {
+  passwordHash: string;
+  resetTokenHash?: string;
+  resetTokenExpires?: number;
+}
+
+declare global {
+  var joblayMockStore:
+    | { jobs: JobPosting[]; recruiters: MockRecruiter[] }
+    | undefined;
+}
+
+// Survive dev hot-reloads.
+const store = (global.joblayMockStore ??= {
+  jobs: [...seedJobs],
+  recruiters: [
+    {
+      id: "rec-demo",
+      name: "Demo Recruiter",
+      email: "recruiter@demo.com",
+      company: "Demo Corp",
+      createdAt: new Date().toISOString(),
+      passwordHash: demoHash("Demo@1234"),
     },
-    delete: (id: string, recruiterId: string) => {
-      const idx = jobs.findIndex(
-        (j) => j.id === id && j.recruiterId === recruiterId
-      );
-      if (idx === -1) return false;
-      jobs.splice(idx, 1);
-      return true;
-    },
-  },
-  recruiters: {
-    findByEmail: (email: string) => recruiters.find((r) => r.email === email),
-    create: (recruiter: Recruiter, password: string) => {
-      recruiters.push(recruiter);
-      passwords.set(recruiter.email, password);
-      return recruiter;
-    },
-    verifyPassword: (email: string, password: string) =>
-      passwords.get(email) === password,
-    updatePassword: (email: string, password: string) => {
-      if (!passwords.has(email)) return false;
-      passwords.set(email, password);
-      return true;
-    },
-  },
-  resetTokens: new Map<string, { email: string; expires: number }>(),
-};
+  ],
+});
+
+export const mockStore = store;

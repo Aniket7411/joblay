@@ -3,7 +3,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { motion } from "framer-motion";
-import { CheckCircle2, Plus, Send } from "lucide-react";
+import { CheckCircle2, Paperclip, Send, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
@@ -21,12 +21,14 @@ import {
 import { jobPostSchema, type JobPostFormData } from "@/lib/validations";
 import { cn } from "@/lib/utils";
 
-export function JobPostForm() {
+export function JobPostForm({ uploadsEnabled = false }: { uploadsEnabled?: boolean }) {
   const router = useRouter();
   const { execute, loading, error } = useFetch();
-  const [recruiterId, setRecruiterId] = useState<string | null>(null);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [success, setSuccess] = useState(false);
+  const [attachment, setAttachment] = useState<{ name: string; url: string } | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const {
     register,
@@ -45,16 +47,6 @@ export function JobPostForm() {
   const nicheTags = getNicheTags(industry, subRole);
 
   useEffect(() => {
-    const stored = localStorage.getItem("joblay_recruiter");
-    if (!stored) {
-      router.push("/login");
-      return;
-    }
-    const recruiter = JSON.parse(stored) as { id: string };
-    setRecruiterId(recruiter.id);
-  }, [router]);
-
-  useEffect(() => {
     setValue("tags", selectedTags);
   }, [selectedTags, setValue]);
 
@@ -64,12 +56,39 @@ export function JobPostForm() {
     );
   };
 
+  const handleFile = async (file: File | undefined) => {
+    if (!file) return;
+    setUploadError(null);
+    if (file.size > 5 * 1024 * 1024) {
+      setUploadError("File must be 5 MB or smaller");
+      return;
+    }
+    setUploading(true);
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      const res = await fetch("/api/uploads", { method: "POST", body });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.message);
+      setAttachment({ name: file.name, url: json.data.url });
+      setValue("attachmentUrl", json.data.url);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removeAttachment = () => {
+    setAttachment(null);
+    setValue("attachmentUrl", "");
+  };
+
   const onSubmit = async (data: JobPostFormData) => {
-    if (!recruiterId) return;
     const result = await execute("/api/jobs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...data, recruiterId }),
+      body: JSON.stringify(data),
     });
     if (result.success) {
       setSuccess(true);
@@ -182,6 +201,52 @@ export function JobPostForm() {
           error={errors.criteria?.message}
         />
 
+        {uploadsEnabled && (
+          <div className="space-y-1.5">
+            <label className="block text-sm font-medium">
+              JD Attachment (optional)
+            </label>
+            {attachment ? (
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-sm">
+                <a
+                  href={attachment.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 truncate hover:underline"
+                >
+                  <Paperclip className="h-4 w-4 shrink-0 text-saffron" />
+                  <span className="truncate">{attachment.name}</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={removeAttachment}
+                  className="text-muted-foreground hover:text-foreground"
+                  aria-label="Remove attachment"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <label
+                className={cn(
+                  "flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-border bg-surface px-4 py-3 text-sm text-muted-foreground hover:border-saffron/40",
+                  uploading && "pointer-events-none opacity-60"
+                )}
+              >
+                <Paperclip className="h-4 w-4" />
+                {uploading ? "Uploading..." : "Upload PDF or Word document (max 5 MB)"}
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  className="sr-only"
+                  onChange={(e) => handleFile(e.target.files?.[0])}
+                />
+              </label>
+            )}
+            {uploadError && <p className="text-xs text-red-500">{uploadError}</p>}
+          </div>
+        )}
+
         <div className="border-t border-border pt-5">
           <h3 className="font-semibold mb-1">Recruiter Contact</h3>
           <p className="text-xs text-muted-foreground mb-4">
@@ -221,7 +286,12 @@ export function JobPostForm() {
           </motion.p>
         )}
 
-        <Button type="submit" loading={loading} className="w-full sm:w-auto">
+        <Button
+          type="submit"
+          loading={loading}
+          disabled={uploading}
+          className="w-full sm:w-auto"
+        >
           <Send className="h-4 w-4" />
           Post Job
         </Button>

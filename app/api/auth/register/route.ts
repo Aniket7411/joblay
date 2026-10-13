@@ -1,56 +1,50 @@
-import { NextResponse } from "next/server";
-import { mockStore } from "@/lib/data/mockStore";
+import { fail, ok, serverError, validationFailed } from "@/lib/api";
+import { hashPassword } from "@/lib/auth/password";
+import { setSessionCookie } from "@/lib/auth/session";
+import { sendWelcomeEmail } from "@/lib/mail";
+import {
+  createRecruiter,
+  findRecruiterByEmail,
+  publicRecruiter,
+} from "@/lib/repository";
 import { registerSchema } from "@/lib/validations";
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const parsed = registerSchema.safeParse(body);
+    const parsed = registerSchema.safeParse(await request.json());
+    if (!parsed.success) return validationFailed(parsed.error);
 
-    if (!parsed.success) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Validation failed",
-          errors: parsed.error.flatten().fieldErrors,
-        },
-        { status: 400 }
-      );
+    const { name, email, company, password } = parsed.data;
+
+    if (await findRecruiterByEmail(email)) {
+      return fail("Email already registered", 409);
     }
 
-    const existing = mockStore.recruiters.findByEmail(parsed.data.email);
-    if (existing) {
-      return NextResponse.json(
-        { success: false, message: "Email already registered" },
-        { status: 409 }
-      );
+    let recruiter;
+    try {
+      recruiter = await createRecruiter({
+        name: name.trim(),
+        email,
+        company: company?.trim() || undefined,
+        passwordHash: await hashPassword(password),
+      });
+    } catch (err) {
+      // Duplicate key from a concurrent registration.
+      if ((err as { code?: number }).code === 11000) {
+        return fail("Email already registered", 409);
+      }
+      throw err;
     }
 
-    const recruiter = mockStore.recruiters.create(
-      {
-        id: `rec-${crypto.randomUUID().slice(0, 8)}`,
-        name: parsed.data.name,
-        email: parsed.data.email,
-        company: parsed.data.company || undefined,
-        createdAt: new Date().toISOString(),
-      },
-      parsed.data.password
+    await setSessionCookie(recruiter.id);
+
+    // Don't block or fail signup on email delivery.
+    sendWelcomeEmail(recruiter.email, recruiter.name).catch((err) =>
+      console.error("[auth/register] welcome email failed", err)
     );
 
-    return NextResponse.json({
-      success: true,
-      message: "Account created successfully",
-      data: {
-        id: recruiter.id,
-        name: recruiter.name,
-        email: recruiter.email,
-        company: recruiter.company,
-      },
-    });
-  } catch {
-    return NextResponse.json(
-      { success: false, message: "Invalid request body" },
-      { status: 400 }
-    );
+    return ok("Account created successfully", publicRecruiter(recruiter));
+  } catch (err) {
+    return serverError(err, "auth/register");
   }
 }

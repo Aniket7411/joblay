@@ -1,8 +1,11 @@
-"use client";
-
-import { motion } from "framer-motion";
+import * as motion from "framer-motion/client";
 import { FileText } from "lucide-react";
 import { JobPostForm } from "@/components/forms/JobPostForm";
+import { isSupabaseConfigured } from "@/lib/supabase";
+
+export const metadata = {
+  title: "Post a Job",
+};
 
 export default function PostJobPage() {
   return (
@@ -22,7 +25,7 @@ export default function PostJobPage() {
           Add a new job description. Candidates will contact you directly.
         </p>
       </motion.div>
-      <JobPostForm />
+      <JobPostForm uploadsEnabled={isSupabaseConfigured()} />
     </div>
   );
 }

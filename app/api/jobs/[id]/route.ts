@@ -1,38 +1,21 @@
-import { NextResponse } from "next/server";
-import { mockStore } from "@/lib/data/mockStore";
+import { fail, ok, serverError } from "@/lib/api";
+import { getSessionRecruiterId } from "@/lib/auth/session";
+import { deleteJob } from "@/lib/repository";
 
 export async function DELETE(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const recruiterId = await getSessionRecruiterId();
+    if (!recruiterId) return fail("Please sign in", 401);
+
     const { id } = await params;
-    const body = await request.json();
-    const recruiterId = body.recruiterId as string;
+    const deleted = await deleteJob(id, recruiterId);
+    if (!deleted) return fail("Job not found", 404);
 
-    if (!recruiterId) {
-      return NextResponse.json(
-        { success: false, message: "Recruiter ID required" },
-        { status: 401 }
-      );
-    }
-
-    const deleted = mockStore.jobs.delete(id, recruiterId);
-    if (!deleted) {
-      return NextResponse.json(
-        { success: false, message: "Job not found" },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: "Job deleted",
-    });
-  } catch {
-    return NextResponse.json(
-      { success: false, message: "Invalid request" },
-      { status: 400 }
-    );
+    return ok("Job deleted");
+  } catch (err) {
+    return serverError(err, "jobs:DELETE");
   }
 }
