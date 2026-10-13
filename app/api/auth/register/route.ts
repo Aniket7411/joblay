@@ -5,6 +5,7 @@ import { sendWelcomeEmail } from "@/lib/mail";
 import {
   createRecruiter,
   findRecruiterByEmail,
+  isDuplicateError,
   publicRecruiter,
 } from "@/lib/repository";
 import { registerSchema } from "@/lib/validations";
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
       });
     } catch (err) {
       // Duplicate key from a concurrent registration.
-      if ((err as { code?: number }).code === 11000) {
+      if (isDuplicateError(err)) {
         return fail("Email already registered", 409);
       }
       throw err;

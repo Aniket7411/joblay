@@ -7,7 +7,7 @@ A minimalist job board. Candidates browse and filter jobs and contact recruiters
 | Concern | Service |
 |---|---|
 | App | Next.js 16 (App Router), React 19, Tailwind 4, Framer Motion |
-| Database | **MongoDB Atlas** (Mongoose) — recruiters, jobs, reset tokens |
+| Database | **Supabase Postgres** — recruiters, jobs, reset tokens (`supabase/schema.sql`) |
 | File storage | **Supabase Storage** — optional JD attachments (PDF/Word) |
 | Email | **Gmail SMTP** (Nodemailer) — password reset + welcome emails |
 | Auth | Email/password, scrypt-hashed, signed httpOnly session cookie |
@@ -20,17 +20,18 @@ cp .env.example .env.local   # fill in values
 npm run dev
 ```
 
-If `MONGODB_URI` is not set, local dev falls back to in-memory sample data (login `recruiter@demo.com` / `Demo@1234`). It resets on restart. Production always requires MongoDB.
+When the server starts it prints a **service status panel** (Supabase DB, Storage, Email, Auth, App URL) so you can see at a glance what's connected.
+
+If Supabase is not configured, local dev falls back to in-memory sample data (login `recruiter@demo.com` / `Demo@1234`). It resets on restart. Production always requires Supabase.
 
 If SMTP is not set, emails (including reset links) are printed to the server console.
 
 ## Go live on Vercel
 
-1. **MongoDB Atlas** — create a free M0 cluster, add a database user, and under *Network Access* allow `0.0.0.0/0`. Copy the connection string.
+1. **Supabase** — create a project, open *SQL Editor*, paste `supabase/schema.sql` and run it. Copy the Project URL and the **secret** key (`sb_secret_...`) from *Project Settings → API Keys*. The `jd-attachments` bucket is created automatically on first start.
 2. **Gmail** — turn on 2-Step Verification, then create an App Password at <https://myaccount.google.com/apppasswords>.
-3. **Supabase** (optional) — create a project, create a **public** bucket named `jd-attachments`, copy the Project URL and `service_role` key.
-4. **Vercel** — import the GitHub repo, then add every variable from `.env.example` under *Settings → Environment Variables*. Set `NEXT_PUBLIC_APP_URL` to your production URL (e.g. `https://joblay.vercel.app`) and generate a fresh `AUTH_SECRET`.
-5. Deploy. Register a recruiter account, post a job, and test *Forgot password* to confirm email works.
+3. **Vercel** — import the GitHub repo, then add every variable from `.env.example` under *Settings → Environment Variables*. Set `NEXT_PUBLIC_APP_URL` to your production URL (e.g. `https://joblay.vercel.app`) and generate a fresh `AUTH_SECRET`.
+4. Deploy. Check the Vercel function logs for the status panel. Register a recruiter account, post a job, and test *Forgot password* to confirm email works.
 
 ## API
 
@@ -49,8 +50,10 @@ If SMTP is not set, emails (including reset links) are printed to the server con
 
 ## Code map
 
-- `lib/repository.ts` — all data access (MongoDB, or in-memory in dev)
+- `lib/repository.ts` — all data access (Supabase, or in-memory in dev)
+- `lib/startup.ts` + `instrumentation.ts` — startup status panel
+- `supabase/schema.sql` — tables, indexes, row-level security
 - `lib/auth/` — password hashing, session cookie, current recruiter
 - `lib/mail.ts` — Gmail SMTP emails
-- `lib/supabase.ts` — attachment uploads
+- `lib/supabase.ts` — Supabase client and attachment uploads
 - `lib/data/filterHierarchy.ts` — locations, profiles, industry → sub-role → tags

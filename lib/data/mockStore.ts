@@ -3,7 +3,7 @@ import type { JobPosting, Recruiter } from "@/types";
 import { seedJobs } from "./jobs";
 
 /**
- * In-memory fallback used only when MONGODB_URI is not set (local dev).
+ * In-memory fallback used only when Supabase is not configured (local dev).
  * Data resets whenever the server restarts.
  */
 

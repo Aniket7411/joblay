@@ -48,8 +48,8 @@ export default function PrivacyPage() {
 
       <h2>5. Service providers</h2>
       <p>
-        We use trusted providers to run Joblay: database hosting (MongoDB Atlas),
-        file storage (Supabase), email delivery (Google) and website hosting.
+        We use trusted providers to run Joblay: database and file storage (Supabase),
+        email delivery (Google) and website hosting.
         They process data only to provide their services to us. Data may be
         stored on servers outside India.
       </p>

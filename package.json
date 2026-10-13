@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node ./scripts/start-with-db.js",
+    "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
@@ -14,7 +14,6 @@
     "clsx": "^2.1.1",
     "framer-motion": "^12.42.2",
     "lucide-react": "^1.23.0",
-    "mongoose": "^9.7.3",
     "next": "^16.3.8",
     "next-themes": "^0.4.6",
     "nodemailer": "^10.1.0",

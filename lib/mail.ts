@@ -141,3 +141,8 @@ export async function sendContactEmail(input: {
     input.email
   );
 }
+
+/** Checks the SMTP login without sending anything. */
+export async function verifyMailConnection(): Promise<void> {
+  await getTransporter().verify();
+}

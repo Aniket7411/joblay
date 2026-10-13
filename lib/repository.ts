@@ -1,31 +1,29 @@
 import { randomUUID } from "node:crypto";
-import { connectDB, isDatabaseConfigured } from "@/lib/db";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { mockStore } from "@/lib/data/mockStore";
-import { JobPostingModel } from "@/lib/models/JobPosting";
-import { RecruiterModel } from "@/lib/models/Recruiter";
 import { hashToken } from "@/lib/auth/password";
+import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
 import type { JobPosting, Recruiter } from "@/types";
 
 /**
- * Single data-access layer. Uses MongoDB when MONGODB_URI is set, otherwise
- * an in-memory store (local dev only — production requires MongoDB).
+ * Single data-access layer. Uses Supabase Postgres when SUPABASE_URL and
+ * SUPABASE_SECRET_KEY are set, otherwise an in-memory store (local dev only —
+ * production requires Supabase). Schema: supabase/schema.sql
  */
 
 export class DatabaseUnavailableError extends Error {
   constructor() {
-    super("Database is not configured. Set MONGODB_URI.");
+    super("Database is not configured. Set SUPABASE_URL and SUPABASE_SECRET_KEY.");
   }
 }
 
-async function shouldUseMongo(): Promise<boolean> {
-  if (isDatabaseConfigured()) {
-    await connectDB();
-    return true;
-  }
+/** Supabase client, or null to use the in-memory dev store. */
+function db(): SupabaseClient | null {
+  if (isSupabaseConfigured()) return getSupabase();
   if (process.env.NODE_ENV === "production") {
     throw new DatabaseUnavailableError();
   }
-  return false;
+  return null;
 }
 
 export interface RecruiterWithHash extends Recruiter {
@@ -45,42 +43,70 @@ export interface JobQuery {
 type NewJob = Omit<JobPosting, "id" | "createdAt">;
 
 /* ------------------------------------------------------------------ */
-/* Mappers                                                             */
+/* Row mapping (snake_case table columns ↔ app types)                  */
 /* ------------------------------------------------------------------ */
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function toRecruiter(doc: any): RecruiterWithHash {
+interface RecruiterRow {
+  id: string;
+  name: string;
+  email: string;
+  company: string | null;
+  password_hash: string;
+  created_at: string;
+}
+
+interface JobRow {
+  id: string;
+  recruiter_id: string;
+  title: string;
+  company: string;
+  location: string;
+  job_profile: string;
+  industry: string;
+  sub_role: string;
+  tags: string[];
+  description: string;
+  criteria: string[];
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  attachment_url: string | null;
+  created_at: string;
+}
+
+const RECRUITER_COLUMNS = "id, name, email, company, password_hash, created_at";
+
+function toRecruiter(row: RecruiterRow): RecruiterWithHash {
   return {
-    id: String(doc._id),
-    name: doc.name,
-    email: doc.email,
-    company: doc.company || undefined,
-    createdAt: new Date(doc.createdAt).toISOString(),
-    passwordHash: doc.passwordHash,
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    company: row.company ?? undefined,
+    createdAt: new Date(row.created_at).toISOString(),
+    passwordHash: row.password_hash,
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function toJob(doc: any): JobPosting {
+function toJob(row: JobRow): JobPosting {
   return {
-    id: String(doc._id),
-    recruiterId: String(doc.recruiterId),
-    title: doc.title,
-    company: doc.company,
-    location: doc.location,
-    jobProfile: doc.jobProfile,
-    industry: doc.industry,
-    subRole: doc.subRole,
-    tags: doc.tags ?? [],
-    description: doc.description,
-    criteria: doc.criteria ?? [],
+    id: row.id,
+    recruiterId: row.recruiter_id,
+    title: row.title,
+    company: row.company,
+    location: row.location,
+    jobProfile: row.job_profile,
+    industry: row.industry,
+    subRole: row.sub_role,
+    tags: row.tags ?? [],
+    description: row.description,
+    criteria: row.criteria ?? [],
     contact: {
-      name: doc.contact?.name || undefined,
-      email: doc.contact?.email || undefined,
-      phone: doc.contact?.phone || undefined,
+      name: row.contact_name ?? undefined,
+      email: row.contact_email ?? undefined,
+      phone: row.contact_phone ?? undefined,
     },
-    attachmentUrl: doc.attachmentUrl || undefined,
-    createdAt: new Date(doc.createdAt).toISOString(),
+    attachmentUrl: row.attachment_url ?? undefined,
+    createdAt: new Date(row.created_at).toISOString(),
   };
 }
 
@@ -94,12 +120,13 @@ export function publicRecruiter(r: RecruiterWithHash): Recruiter {
   };
 }
 
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function isUuid(id: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 }
 
-function isObjectId(id: string): boolean {
-  return /^[a-f\d]{24}$/i.test(id);
+/** Postgres unique-violation, e.g. a concurrent registration. */
+export function isDuplicateError(err: unknown): boolean {
+  return (err as { code?: string })?.code === "23505";
 }
 
 /* ------------------------------------------------------------------ */
@@ -110,9 +137,15 @@ export async function findRecruiterByEmail(
   email: string
 ): Promise<RecruiterWithHash | null> {
   const normalized = email.trim().toLowerCase();
-  if (await shouldUseMongo()) {
-    const doc = await RecruiterModel.findOne({ email: normalized }).lean();
-    return doc ? toRecruiter(doc) : null;
+  const sb = db();
+  if (sb) {
+    const { data, error } = await sb
+      .from("recruiters")
+      .select(RECRUITER_COLUMNS)
+      .eq("email", normalized)
+      .maybeSingle<RecruiterRow>();
+    if (error) throw error;
+    return data ? toRecruiter(data) : null;
   }
   return mockStore.recruiters.find((r) => r.email === normalized) ?? null;
 }
@@ -120,10 +153,16 @@ export async function findRecruiterByEmail(
 export async function findRecruiterById(
   id: string
 ): Promise<RecruiterWithHash | null> {
-  if (await shouldUseMongo()) {
-    if (!isObjectId(id)) return null;
-    const doc = await RecruiterModel.findById(id).lean();
-    return doc ? toRecruiter(doc) : null;
+  const sb = db();
+  if (sb) {
+    if (!isUuid(id)) return null;
+    const { data, error } = await sb
+      .from("recruiters")
+      .select(RECRUITER_COLUMNS)
+      .eq("id", id)
+      .maybeSingle<RecruiterRow>();
+    if (error) throw error;
+    return data ? toRecruiter(data) : null;
   }
   return mockStore.recruiters.find((r) => r.id === id) ?? null;
 }
@@ -135,9 +174,20 @@ export async function createRecruiter(input: {
   passwordHash: string;
 }): Promise<RecruiterWithHash> {
   const email = input.email.trim().toLowerCase();
-  if (await shouldUseMongo()) {
-    const doc = await RecruiterModel.create({ ...input, email });
-    return toRecruiter(doc.toObject());
+  const sb = db();
+  if (sb) {
+    const { data, error } = await sb
+      .from("recruiters")
+      .insert({
+        name: input.name,
+        email,
+        company: input.company ?? null,
+        password_hash: input.passwordHash,
+      })
+      .select(RECRUITER_COLUMNS)
+      .single<RecruiterRow>();
+    if (error) throw error;
+    return toRecruiter(data);
   }
   const recruiter = {
     id: `rec-${randomUUID().slice(0, 8)}`,
@@ -156,11 +206,16 @@ export async function setResetToken(
   tokenHash: string,
   expires: Date
 ): Promise<void> {
-  if (await shouldUseMongo()) {
-    await RecruiterModel.updateOne(
-      { _id: recruiterId },
-      { resetTokenHash: tokenHash, resetTokenExpires: expires }
-    );
+  const sb = db();
+  if (sb) {
+    const { error } = await sb
+      .from("recruiters")
+      .update({
+        reset_token_hash: tokenHash,
+        reset_token_expires: expires.toISOString(),
+      })
+      .eq("id", recruiterId);
+    if (error) throw error;
     return;
   }
   const r = mockStore.recruiters.find((x) => x.id === recruiterId);
@@ -170,21 +225,26 @@ export async function setResetToken(
   }
 }
 
-/** Atomically consumes a valid reset token and sets the new password hash. */
+/** Consumes a valid reset token (single use) and sets the new password hash. */
 export async function resetPasswordWithToken(
   token: string,
   passwordHash: string
 ): Promise<boolean> {
   const tokenHash = hashToken(token);
-  if (await shouldUseMongo()) {
-    const res = await RecruiterModel.updateOne(
-      { resetTokenHash: tokenHash, resetTokenExpires: { $gt: new Date() } },
-      {
-        $set: { passwordHash },
-        $unset: { resetTokenHash: 1, resetTokenExpires: 1 },
-      }
-    );
-    return res.modifiedCount === 1;
+  const sb = db();
+  if (sb) {
+    const { data, error } = await sb
+      .from("recruiters")
+      .update({
+        password_hash: passwordHash,
+        reset_token_hash: null,
+        reset_token_expires: null,
+      })
+      .eq("reset_token_hash", tokenHash)
+      .gt("reset_token_expires", new Date().toISOString())
+      .select("id");
+    if (error) throw error;
+    return data.length === 1;
   }
   const r = mockStore.recruiters.find(
     (x) =>
@@ -203,33 +263,38 @@ export async function resetPasswordWithToken(
 /* ------------------------------------------------------------------ */
 
 export async function listJobs(q: JobQuery = {}): Promise<JobPosting[]> {
-  if (await shouldUseMongo()) {
-    const filter: Record<string, unknown> = {};
+  const sb = db();
+  if (sb) {
+    let query = sb
+      .from("jobs")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(500);
+
     if (q.recruiterId) {
-      if (!isObjectId(q.recruiterId)) return [];
-      filter.recruiterId = q.recruiterId;
+      if (!isUuid(q.recruiterId)) return [];
+      query = query.eq("recruiter_id", q.recruiterId);
     }
-    if (q.location) filter.location = q.location;
-    if (q.jobProfile) filter.jobProfile = q.jobProfile;
-    if (q.industry) filter.industry = q.industry;
-    if (q.subRole) filter.subRole = q.subRole;
-    if (q.tags?.length) filter.tags = { $in: q.tags };
+    if (q.location) query = query.eq("location", q.location);
+    if (q.jobProfile) query = query.eq("job_profile", q.jobProfile);
+    if (q.industry) query = query.eq("industry", q.industry);
+    if (q.subRole) query = query.eq("sub_role", q.subRole);
+    if (q.tags?.length) query = query.overlaps("tags", q.tags);
     if (q.search) {
-      const rx = new RegExp(escapeRegex(q.search), "i");
-      filter.$or = [
-        { title: rx },
-        { company: rx },
-        { location: rx },
-        { industry: rx },
-        { subRole: rx },
-        { tags: rx },
-      ];
+      // Strip characters that have meaning in PostgREST filter syntax.
+      const term = q.search.replace(/[,()*%\\:"]/g, " ").trim();
+      if (term) {
+        query = query.or(
+          ["title", "company", "location", "industry", "sub_role", "description"]
+            .map((col) => `${col}.ilike.*${term}*`)
+            .join(",")
+        );
+      }
     }
-    const docs = await JobPostingModel.find(filter)
-      .sort({ createdAt: -1 })
-      .limit(500)
-      .lean();
-    return docs.map(toJob);
+
+    const { data, error } = await query.returns<JobRow[]>();
+    if (error) throw error;
+    return data.map(toJob);
   }
 
   let results = [...mockStore.jobs].sort((a, b) =>
@@ -249,7 +314,7 @@ export async function listJobs(q: JobQuery = {}): Promise<JobPosting[]> {
   if (q.search) {
     const s = q.search.toLowerCase();
     results = results.filter((j) =>
-      [j.title, j.company, j.location, j.industry, j.subRole, ...j.tags]
+      [j.title, j.company, j.location, j.industry, j.subRole, j.description, ...j.tags]
         .join(" ")
         .toLowerCase()
         .includes(s)
@@ -259,9 +324,30 @@ export async function listJobs(q: JobQuery = {}): Promise<JobPosting[]> {
 }
 
 export async function createJob(input: NewJob): Promise<JobPosting> {
-  if (await shouldUseMongo()) {
-    const doc = await JobPostingModel.create(input);
-    return toJob(doc.toObject());
+  const sb = db();
+  if (sb) {
+    const { data, error } = await sb
+      .from("jobs")
+      .insert({
+        recruiter_id: input.recruiterId,
+        title: input.title,
+        company: input.company,
+        location: input.location,
+        job_profile: input.jobProfile,
+        industry: input.industry,
+        sub_role: input.subRole,
+        tags: input.tags,
+        description: input.description,
+        criteria: input.criteria,
+        contact_name: input.contact.name ?? null,
+        contact_email: input.contact.email ?? null,
+        contact_phone: input.contact.phone ?? null,
+        attachment_url: input.attachmentUrl ?? null,
+      })
+      .select("*")
+      .single<JobRow>();
+    if (error) throw error;
+    return toJob(data);
   }
   const job: JobPosting = {
     ...input,
@@ -277,10 +363,17 @@ export async function deleteJob(
   id: string,
   recruiterId: string
 ): Promise<boolean> {
-  if (await shouldUseMongo()) {
-    if (!isObjectId(id)) return false;
-    const res = await JobPostingModel.deleteOne({ _id: id, recruiterId });
-    return res.deletedCount === 1;
+  const sb = db();
+  if (sb) {
+    if (!isUuid(id) || !isUuid(recruiterId)) return false;
+    const { data, error } = await sb
+      .from("jobs")
+      .delete()
+      .eq("id", id)
+      .eq("recruiter_id", recruiterId)
+      .select("id");
+    if (error) throw error;
+    return data.length === 1;
   }
   const idx = mockStore.jobs.findIndex(
     (j) => j.id === id && j.recruiterId === recruiterId
