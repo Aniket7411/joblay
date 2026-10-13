@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { mockStore } from "@/lib/data/mockStore";
 import { hashToken } from "@/lib/auth/password";
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
-import type { JobPosting, Recruiter } from "@/types";
+import type { JobPosting, Recruiter, RecruiterSummary, UserRole } from "@/types";
 
 /**
  * Single data-access layer. Uses Supabase Postgres when SUPABASE_URL and
@@ -51,6 +51,7 @@ interface RecruiterRow {
   name: string;
   email: string;
   company: string | null;
+  role: UserRole;
   password_hash: string;
   created_at: string;
 }
@@ -74,7 +75,7 @@ interface JobRow {
   created_at: string;
 }
 
-const RECRUITER_COLUMNS = "id, name, email, company, password_hash, created_at";
+const RECRUITER_COLUMNS = "id, name, email, company, role, password_hash, created_at";
 
 function toRecruiter(row: RecruiterRow): RecruiterWithHash {
   return {
@@ -82,6 +83,7 @@ function toRecruiter(row: RecruiterRow): RecruiterWithHash {
     name: row.name,
     email: row.email,
     company: row.company ?? undefined,
+    role: row.role ?? "recruiter",
     createdAt: new Date(row.created_at).toISOString(),
     passwordHash: row.password_hash,
   };
@@ -116,6 +118,7 @@ export function publicRecruiter(r: RecruiterWithHash): Recruiter {
     name: r.name,
     email: r.email,
     company: r.company,
+    role: r.role,
     createdAt: r.createdAt,
   };
 }
@@ -194,6 +197,7 @@ export async function createRecruiter(input: {
     name: input.name,
     email,
     company: input.company,
+    role: "recruiter" as const,
     createdAt: new Date().toISOString(),
     passwordHash: input.passwordHash,
   };
@@ -380,5 +384,73 @@ export async function deleteJob(
   );
   if (idx === -1) return false;
   mockStore.jobs.splice(idx, 1);
+  return true;
+}
+
+/* ------------------------------------------------------------------ */
+/* Admin                                                               */
+/* ------------------------------------------------------------------ */
+
+/** All recruiter accounts with their job counts, newest first. */
+export async function listRecruiters(): Promise<RecruiterSummary[]> {
+  const sb = db();
+  if (sb) {
+    const { data, error } = await sb
+      .from("recruiters")
+      .select("id, name, email, company, role, created_at, jobs(count)")
+      .order("created_at", { ascending: false })
+      .limit(1000);
+    if (error) throw error;
+    return (data as (Omit<RecruiterRow, "password_hash"> & { jobs: { count: number }[] })[]).map(
+      (row) => ({
+        id: row.id,
+        name: row.name,
+        email: row.email,
+        company: row.company ?? undefined,
+        role: row.role ?? "recruiter",
+        createdAt: new Date(row.created_at).toISOString(),
+        jobCount: row.jobs?.[0]?.count ?? 0,
+      })
+    );
+  }
+  return mockStore.recruiters.map((r) => ({
+    ...publicRecruiter(r),
+    jobCount: mockStore.jobs.filter((j) => j.recruiterId === r.id).length,
+  }));
+}
+
+/** Deletes any job (admin moderation). */
+export async function adminDeleteJob(id: string): Promise<boolean> {
+  const sb = db();
+  if (sb) {
+    if (!isUuid(id)) return false;
+    const { data, error } = await sb.from("jobs").delete().eq("id", id).select("id");
+    if (error) throw error;
+    return data.length === 1;
+  }
+  const idx = mockStore.jobs.findIndex((j) => j.id === id);
+  if (idx === -1) return false;
+  mockStore.jobs.splice(idx, 1);
+  return true;
+}
+
+/** Deletes a recruiter account and (via cascade) all their jobs. Never deletes admins. */
+export async function adminDeleteRecruiter(id: string): Promise<boolean> {
+  const sb = db();
+  if (sb) {
+    if (!isUuid(id)) return false;
+    const { data, error } = await sb
+      .from("recruiters")
+      .delete()
+      .eq("id", id)
+      .eq("role", "recruiter")
+      .select("id");
+    if (error) throw error;
+    return data.length === 1;
+  }
+  const idx = mockStore.recruiters.findIndex((r) => r.id === id && r.role === "recruiter");
+  if (idx === -1) return false;
+  mockStore.recruiters.splice(idx, 1);
+  mockStore.jobs = mockStore.jobs.filter((j) => j.recruiterId !== id);
   return true;
 }

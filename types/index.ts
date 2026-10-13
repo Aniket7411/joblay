@@ -21,12 +21,19 @@ export interface JobPosting {
   createdAt: string;
 }
 
+export type UserRole = "recruiter" | "admin";
+
 export interface Recruiter {
   id: string;
   name: string;
   email: string;
   company?: string;
+  role: UserRole;
   createdAt: string;
+}
+
+export interface RecruiterSummary extends Recruiter {
+  jobCount: number;
 }
 
 export interface AuthPayload {

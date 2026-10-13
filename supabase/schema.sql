@@ -13,6 +13,11 @@ create table if not exists public.recruiters (
   created_at          timestamptz not null default now()
 );
 
+-- Added after the first release; safe on existing databases.
+alter table public.recruiters
+  add column if not exists role text not null default 'recruiter'
+  check (role in ('recruiter', 'admin'));
+
 create index if not exists recruiters_reset_token_idx
   on public.recruiters (reset_token_hash)
   where reset_token_hash is not null;

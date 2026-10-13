@@ -33,6 +33,7 @@ const store = (global.joblayMockStore ??= {
       name: "Demo Recruiter",
       email: "recruiter@demo.com",
       company: "Demo Corp",
+      role: "recruiter",
       createdAt: new Date().toISOString(),
       passwordHash: demoHash("Demo@1234"),
     },

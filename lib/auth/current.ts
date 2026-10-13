@@ -9,3 +9,9 @@ export async function getCurrentRecruiter(): Promise<Recruiter | null> {
   const recruiter = await findRecruiterById(id);
   return recruiter ? publicRecruiter(recruiter) : null;
 }
+
+/** The signed-in recruiter if they are an admin, otherwise null. */
+export async function getCurrentAdmin(): Promise<Recruiter | null> {
+  const recruiter = await getCurrentRecruiter();
+  return recruiter?.role === "admin" ? recruiter : null;
+}

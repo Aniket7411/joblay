@@ -50,7 +50,10 @@ async function checkSupabase(): Promise<Line[]> {
     for (const table of ["recruiters", "jobs"]) {
       const { count, error } = await withTimeout(
         // Not a HEAD request: those don't report a missing table as an error.
-        sb.from(table).select("id", { count: "exact" }).limit(1),
+        sb
+          .from(table)
+          .select(table === "recruiters" ? "id, role" : "id", { count: "exact" })
+          .limit(1),
         "Database"
       );
       if (error) throw error;
@@ -59,12 +62,12 @@ async function checkSupabase(): Promise<Line[]> {
     lines.push({ level: "ok", name: "Supabase DB", detail: `connected to ${host} (${counts.join(", ")})` });
   } catch (err) {
     const code = (err as { code?: string }).code;
-    const missing = code === "PGRST205" || code === "42P01" || /schema cache|does not exist/i.test(message(err));
+    const missing = code === "PGRST205" || code === "42P01" || code === "42703" || /schema cache|does not exist/i.test(message(err));
     lines.push({
       level: "fail",
       name: "Supabase DB",
       detail: missing
-        ? `${host} reachable but tables are missing — run supabase/schema.sql in the Supabase SQL Editor`
+        ? `${host} reachable but tables/columns are missing — run supabase/schema.sql in the Supabase SQL Editor`
         : `${host}: ${message(err) || "request failed (check SUPABASE_SECRET_KEY)"}`,
     });
   }

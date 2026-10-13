@@ -12,7 +12,11 @@ export async function POST(request: Request) {
     if (!parsed.success) return validationFailed(parsed.error);
 
     const recruiter = await findRecruiterByEmail(parsed.data.email);
-    if (recruiter) {
+    if (recruiter?.role === "admin") {
+      // Admin passwords are reset with scripts/create-admin.mjs, never by
+      // email — admin addresses may not be mailboxes we control.
+      console.warn(`[auth/forgot-password] reset requested for admin ${recruiter.email} — ignored`);
+    } else if (recruiter) {
       const { token, tokenHash } = createResetToken();
       await setResetToken(
         recruiter.id,

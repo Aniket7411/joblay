@@ -34,7 +34,7 @@ export function LoginForm() {
       body: JSON.stringify(data),
     });
     if (result.success && result.data) {
-      router.push("/dashboard");
+      router.push(result.data.role === "admin" ? "/admin" : "/dashboard");
       router.refresh();
     }
   };

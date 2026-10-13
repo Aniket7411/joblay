@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Briefcase, Plus, Trash2 } from "lucide-react";
+import { Briefcase, Plus, Shield, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -50,7 +50,15 @@ export function DashboardClient({ recruiter }: { recruiter: Recruiter }) {
             {recruiter.company ? ` · ${recruiter.company}` : ""}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {recruiter.role === "admin" && (
+            <Link href="/admin">
+              <Button variant="secondary">
+                <Shield className="h-4 w-4" />
+                Admin Panel
+              </Button>
+            </Link>
+          )}
           <Link href="/dashboard/post">
             <Button>
               <Plus className="h-4 w-4" />
