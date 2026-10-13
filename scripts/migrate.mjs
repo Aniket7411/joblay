@@ -112,6 +112,12 @@ async function main() {
     done(0);
   } catch (err) {
     console.error(`[db] Could not run migrations: ${err.message}`);
+    if (/^db\..+\.supabase\.co$/.test(hostname)) {
+      console.error(
+        "[db] This is Supabase's Direct connection, which is IPv6-only. Use the Session pooler URI instead " +
+          "(Supabase → Connect → Session pooler; host ends in pooler.supabase.com, port 5432)."
+      );
+    }
     done(1);
   } finally {
     await client.query("select pg_advisory_unlock($1)", [LOCK_ID]).catch(() => {});
