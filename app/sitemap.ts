@@ -24,7 +24,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       })),
     ];
   } catch (err) {
-    console.error("[sitemap] job lookup failed", err);
+    console.warn("[sitemap] jobs left out:", err instanceof Error ? err.message : err);
     return pages;
   }
 }
