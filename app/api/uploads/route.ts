@@ -1,5 +1,5 @@
 import { fail, ok, serverError } from "@/lib/api";
-import { getSessionRecruiterId } from "@/lib/auth/session";
+import { getCurrentRecruiter } from "@/lib/auth/current";
 import {
   ALLOWED_UPLOAD_TYPES,
   isSupabaseConfigured,
@@ -9,7 +9,7 @@ import {
 
 export async function POST(request: Request) {
   try {
-    const recruiterId = await getSessionRecruiterId();
+    const recruiterId = (await getCurrentRecruiter())?.id;
     if (!recruiterId) return fail("Please sign in", 401);
 
     if (!isSupabaseConfigured()) {

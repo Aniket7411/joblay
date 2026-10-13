@@ -21,12 +21,31 @@ import {
 import { jobPostSchema, type JobPostFormData } from "@/lib/validations";
 import { cn } from "@/lib/utils";
 
-export function JobPostForm({ uploadsEnabled = false }: { uploadsEnabled?: boolean }) {
+interface JobPostFormProps {
+  uploadsEnabled?: boolean;
+  /** Edit mode: the job being edited and its current values. */
+  jobId?: string;
+  initialValues?: JobPostFormData;
+  /** Where to go after saving (defaults to the dashboard). */
+  redirectTo?: string;
+}
+
+export function JobPostForm({
+  uploadsEnabled = false,
+  jobId,
+  initialValues,
+  redirectTo = "/dashboard",
+}: JobPostFormProps) {
   const router = useRouter();
+  const isEdit = Boolean(jobId);
   const { execute, loading, error } = useFetch();
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>(initialValues?.tags ?? []);
   const [success, setSuccess] = useState(false);
-  const [attachment, setAttachment] = useState<{ name: string; url: string } | null>(null);
+  const [attachment, setAttachment] = useState<{ name: string; url: string } | null>(
+    initialValues?.attachmentUrl
+      ? { name: "Current attachment", url: initialValues.attachmentUrl }
+      : null
+  );
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
@@ -38,7 +57,7 @@ export function JobPostForm({ uploadsEnabled = false }: { uploadsEnabled?: boole
     formState: { errors },
   } = useForm<JobPostFormData>({
     resolver: zodResolver(jobPostSchema),
-    defaultValues: { tags: [] },
+    defaultValues: initialValues ?? { tags: [] },
   });
 
   const industry = watch("industry");
@@ -85,14 +104,17 @@ export function JobPostForm({ uploadsEnabled = false }: { uploadsEnabled?: boole
   };
 
   const onSubmit = async (data: JobPostFormData) => {
-    const result = await execute("/api/jobs", {
-      method: "POST",
+    const result = await execute(isEdit ? `/api/jobs/${jobId}` : "/api/jobs", {
+      method: isEdit ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
     if (result.success) {
       setSuccess(true);
-      setTimeout(() => router.push("/dashboard"), 1500);
+      setTimeout(() => {
+        router.push(redirectTo);
+        router.refresh();
+      }, 1200);
     }
   };
 
@@ -100,8 +122,10 @@ export function JobPostForm({ uploadsEnabled = false }: { uploadsEnabled?: boole
     return (
       <Card className="p-8 text-center">
         <CheckCircle2 className="h-16 w-16 text-india-green mx-auto mb-4" />
-        <h3 className="text-xl font-semibold">Job Posted!</h3>
-        <p className="text-muted-foreground mt-2">Redirecting to dashboard...</p>
+        <h3 className="text-xl font-semibold">
+          {isEdit ? "Changes Saved!" : "Job Posted!"}
+        </h3>
+        <p className="text-muted-foreground mt-2">Redirecting...</p>
       </Card>
     );
   }
@@ -293,7 +317,7 @@ export function JobPostForm({ uploadsEnabled = false }: { uploadsEnabled?: boole
           className="w-full sm:w-auto"
         >
           <Send className="h-4 w-4" />
-          Post Job
+          {isEdit ? "Save Changes" : "Post Job"}
         </Button>
       </form>
     </Card>

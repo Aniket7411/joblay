@@ -1,10 +1,7 @@
 import { ok, serverError, validationFailed } from "@/lib/api";
-import { createResetToken } from "@/lib/auth/password";
-import { sendPasswordResetEmail } from "@/lib/mail";
-import { findRecruiterByEmail, setResetToken } from "@/lib/repository";
+import { issuePasswordReset } from "@/lib/auth/reset";
+import { findRecruiterByEmail } from "@/lib/repository";
 import { forgotPasswordSchema } from "@/lib/validations";
-
-const RESET_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 export async function POST(request: Request) {
   try {
@@ -16,21 +13,9 @@ export async function POST(request: Request) {
       // Admin passwords are reset with scripts/create-admin.mjs, never by
       // email — admin addresses may not be mailboxes we control.
       console.warn(`[auth/forgot-password] reset requested for admin ${recruiter.email} — ignored`);
-    } else if (recruiter) {
-      const { token, tokenHash } = createResetToken();
-      await setResetToken(
-        recruiter.id,
-        tokenHash,
-        new Date(Date.now() + RESET_TTL_MS)
-      );
-
-      const baseUrl = (
-        process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin
-      ).replace(/\/$/, "");
-      const resetLink = `${baseUrl}/reset-password?token=${token}`;
-
+    } else if (recruiter && recruiter.status === "active") {
       try {
-        await sendPasswordResetEmail(recruiter.email, resetLink);
+        await issuePasswordReset(recruiter, new URL(request.url).origin);
       } catch (err) {
         console.error("[auth/forgot-password] email failed", err);
       }

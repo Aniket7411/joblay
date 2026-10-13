@@ -1,5 +1,5 @@
 import { randomBytes, scryptSync } from "node:crypto";
-import type { JobPosting, Recruiter } from "@/types";
+import type { ContactMessage, JobPosting, Recruiter } from "@/types";
 import { seedJobs } from "./jobs";
 
 /**
@@ -20,7 +20,11 @@ interface MockRecruiter extends Recruiter {
 
 declare global {
   var joblayMockStore:
-    | { jobs: JobPosting[]; recruiters: MockRecruiter[] }
+    | {
+        jobs: JobPosting[];
+        recruiters: MockRecruiter[];
+        messages: ContactMessage[];
+      }
     | undefined;
 }
 
@@ -34,10 +38,22 @@ const store = (global.joblayMockStore ??= {
       email: "recruiter@demo.com",
       company: "Demo Corp",
       role: "recruiter",
+      status: "active",
+      createdAt: new Date().toISOString(),
+      passwordHash: demoHash("Demo@1234"),
+    },
+    {
+      id: "rec-admin",
+      name: "Demo Admin",
+      email: "admin@demo.com",
+      company: "Joblay",
+      role: "admin",
+      status: "active",
       createdAt: new Date().toISOString(),
       passwordHash: demoHash("Demo@1234"),
     },
   ],
+  messages: [],
 });
 
 export const mockStore = store;

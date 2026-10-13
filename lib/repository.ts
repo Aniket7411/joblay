@@ -3,7 +3,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { mockStore } from "@/lib/data/mockStore";
 import { hashToken } from "@/lib/auth/password";
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
-import type { JobPosting, Recruiter, RecruiterSummary, UserRole } from "@/types";
+import type {
+  AccountStatus,
+  ContactMessage,
+  JobPosting,
+  Recruiter,
+  RecruiterSummary,
+  UserRole,
+} from "@/types";
 
 /**
  * Single data-access layer. Uses Supabase Postgres when SUPABASE_URL and
@@ -38,9 +45,12 @@ export interface JobQuery {
   subRole?: string;
   tags?: string[];
   search?: string;
+  /** Include jobs from suspended employers (admin views). */
+  includeSuspended?: boolean;
 }
 
-type NewJob = Omit<JobPosting, "id" | "createdAt">;
+export type JobInput = Omit<JobPosting, "id" | "createdAt" | "updatedAt" | "recruiterId">;
+type NewJob = JobInput & { recruiterId: string };
 
 /* ------------------------------------------------------------------ */
 /* Row mapping (snake_case table columns ↔ app types)                  */
@@ -52,6 +62,8 @@ interface RecruiterRow {
   email: string;
   company: string | null;
   role: UserRole;
+  status: AccountStatus;
+  last_login_at: string | null;
   password_hash: string;
   created_at: string;
 }
@@ -73,20 +85,43 @@ interface JobRow {
   contact_phone: string | null;
   attachment_url: string | null;
   created_at: string;
+  updated_at: string | null;
 }
 
-const RECRUITER_COLUMNS = "id, name, email, company, role, password_hash, created_at";
+interface MessageRow {
+  id: string;
+  name: string;
+  email: string;
+  topic: string;
+  message: string;
+  status: "open" | "resolved";
+  created_at: string;
+}
 
-function toRecruiter(row: RecruiterRow): RecruiterWithHash {
+const RECRUITER_PUBLIC_COLUMNS =
+  "id, name, email, company, role, status, last_login_at, created_at";
+const RECRUITER_COLUMNS = `${RECRUITER_PUBLIC_COLUMNS}, password_hash`;
+const JOB_COLUMNS =
+  "id, recruiter_id, title, company, location, job_profile, industry, sub_role, tags, description, criteria, contact_name, contact_email, contact_phone, attachment_url, created_at, updated_at";
+
+const iso = (v: string | null | undefined) =>
+  v ? new Date(v).toISOString() : undefined;
+
+function toPublicRecruiter(row: Omit<RecruiterRow, "password_hash">): Recruiter {
   return {
     id: row.id,
     name: row.name,
     email: row.email,
     company: row.company ?? undefined,
     role: row.role ?? "recruiter",
+    status: row.status ?? "active",
+    lastLoginAt: iso(row.last_login_at),
     createdAt: new Date(row.created_at).toISOString(),
-    passwordHash: row.password_hash,
   };
+}
+
+function toRecruiter(row: RecruiterRow): RecruiterWithHash {
+  return { ...toPublicRecruiter(row), passwordHash: row.password_hash };
 }
 
 function toJob(row: JobRow): JobPosting {
@@ -109,18 +144,44 @@ function toJob(row: JobRow): JobPosting {
     },
     attachmentUrl: row.attachment_url ?? undefined,
     createdAt: new Date(row.created_at).toISOString(),
+    updatedAt: iso(row.updated_at),
+  };
+}
+
+function jobToRow(input: JobInput) {
+  return {
+    title: input.title,
+    company: input.company,
+    location: input.location,
+    job_profile: input.jobProfile,
+    industry: input.industry,
+    sub_role: input.subRole,
+    tags: input.tags,
+    description: input.description,
+    criteria: input.criteria,
+    contact_name: input.contact.name ?? null,
+    contact_email: input.contact.email ?? null,
+    contact_phone: input.contact.phone ?? null,
+    attachment_url: input.attachmentUrl ?? null,
+  };
+}
+
+function toMessage(row: MessageRow): ContactMessage {
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    topic: row.topic,
+    message: row.message,
+    status: row.status,
+    createdAt: new Date(row.created_at).toISOString(),
   };
 }
 
 export function publicRecruiter(r: RecruiterWithHash): Recruiter {
-  return {
-    id: r.id,
-    name: r.name,
-    email: r.email,
-    company: r.company,
-    role: r.role,
-    createdAt: r.createdAt,
-  };
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { passwordHash, ...rest } = r;
+  return rest;
 }
 
 function isUuid(id: string): boolean {
@@ -130,6 +191,10 @@ function isUuid(id: string): boolean {
 /** Postgres unique-violation, e.g. a concurrent registration. */
 export function isDuplicateError(err: unknown): boolean {
   return (err as { code?: string })?.code === "23505";
+}
+
+function mockRecruiter(id: string) {
+  return mockStore.recruiters.find((r) => r.id === id);
 }
 
 /* ------------------------------------------------------------------ */
@@ -167,7 +232,7 @@ export async function findRecruiterById(
     if (error) throw error;
     return data ? toRecruiter(data) : null;
   }
-  return mockStore.recruiters.find((r) => r.id === id) ?? null;
+  return mockRecruiter(id) ?? null;
 }
 
 export async function createRecruiter(input: {
@@ -186,6 +251,7 @@ export async function createRecruiter(input: {
         email,
         company: input.company ?? null,
         password_hash: input.passwordHash,
+        last_login_at: new Date().toISOString(),
       })
       .select(RECRUITER_COLUMNS)
       .single<RecruiterRow>();
@@ -198,11 +264,26 @@ export async function createRecruiter(input: {
     email,
     company: input.company,
     role: "recruiter" as const,
+    status: "active" as const,
+    lastLoginAt: new Date().toISOString(),
     createdAt: new Date().toISOString(),
     passwordHash: input.passwordHash,
   };
   mockStore.recruiters.push(recruiter);
   return recruiter;
+}
+
+/** Records a successful sign-in (best effort). */
+export async function recordLogin(id: string): Promise<void> {
+  const now = new Date().toISOString();
+  const sb = db();
+  if (sb) {
+    const { error } = await sb.from("recruiters").update({ last_login_at: now }).eq("id", id);
+    if (error) console.error("[recordLogin]", error.message);
+    return;
+  }
+  const r = mockRecruiter(id);
+  if (r) r.lastLoginAt = now;
 }
 
 export async function setResetToken(
@@ -222,7 +303,7 @@ export async function setResetToken(
     if (error) throw error;
     return;
   }
-  const r = mockStore.recruiters.find((x) => x.id === recruiterId);
+  const r = mockRecruiter(recruiterId);
   if (r) {
     r.resetTokenHash = tokenHash;
     r.resetTokenExpires = expires.getTime();
@@ -269,12 +350,14 @@ export async function resetPasswordWithToken(
 export async function listJobs(q: JobQuery = {}): Promise<JobPosting[]> {
   const sb = db();
   if (sb) {
+    // Inner-join the owner so jobs from suspended employers can be hidden.
     let query = sb
       .from("jobs")
-      .select("*")
+      .select(`${JOB_COLUMNS}, recruiters!inner(status)`)
       .order("created_at", { ascending: false })
-      .limit(500);
+      .limit(1000);
 
+    if (!q.includeSuspended) query = query.eq("recruiters.status", "active");
     if (q.recruiterId) {
       if (!isUuid(q.recruiterId)) return [];
       query = query.eq("recruiter_id", q.recruiterId);
@@ -304,6 +387,9 @@ export async function listJobs(q: JobQuery = {}): Promise<JobPosting[]> {
   let results = [...mockStore.jobs].sort((a, b) =>
     b.createdAt.localeCompare(a.createdAt)
   );
+  if (!q.includeSuspended) {
+    results = results.filter((j) => mockRecruiter(j.recruiterId)?.status !== "suspended");
+  }
   if (q.recruiterId)
     results = results.filter((j) => j.recruiterId === q.recruiterId);
   if (q.location) results = results.filter((j) => j.location === q.location);
@@ -327,38 +413,69 @@ export async function listJobs(q: JobQuery = {}): Promise<JobPosting[]> {
   return results;
 }
 
+export async function getJobById(id: string): Promise<JobPosting | null> {
+  const sb = db();
+  if (sb) {
+    if (!isUuid(id)) return null;
+    const { data, error } = await sb
+      .from("jobs")
+      .select(JOB_COLUMNS)
+      .eq("id", id)
+      .maybeSingle<JobRow>();
+    if (error) throw error;
+    return data ? toJob(data) : null;
+  }
+  return mockStore.jobs.find((j) => j.id === id) ?? null;
+}
+
 export async function createJob(input: NewJob): Promise<JobPosting> {
   const sb = db();
   if (sb) {
     const { data, error } = await sb
       .from("jobs")
-      .insert({
-        recruiter_id: input.recruiterId,
-        title: input.title,
-        company: input.company,
-        location: input.location,
-        job_profile: input.jobProfile,
-        industry: input.industry,
-        sub_role: input.subRole,
-        tags: input.tags,
-        description: input.description,
-        criteria: input.criteria,
-        contact_name: input.contact.name ?? null,
-        contact_email: input.contact.email ?? null,
-        contact_phone: input.contact.phone ?? null,
-        attachment_url: input.attachmentUrl ?? null,
-      })
-      .select("*")
+      .insert({ ...jobToRow(input), recruiter_id: input.recruiterId })
+      .select(JOB_COLUMNS)
       .single<JobRow>();
     if (error) throw error;
     return toJob(data);
   }
+  const now = new Date().toISOString();
   const job: JobPosting = {
     ...input,
     id: `job-${randomUUID().slice(0, 8)}`,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
+    updatedAt: now,
   };
   mockStore.jobs.unshift(job);
+  return job;
+}
+
+/**
+ * Updates a job. Pass the owner's id to restrict the update to their own job,
+ * or null for an admin edit of any job.
+ */
+export async function updateJob(
+  id: string,
+  input: JobInput,
+  ownerId: string | null
+): Promise<JobPosting | null> {
+  const sb = db();
+  if (sb) {
+    if (!isUuid(id)) return null;
+    let query = sb
+      .from("jobs")
+      .update({ ...jobToRow(input), updated_at: new Date().toISOString() })
+      .eq("id", id);
+    if (ownerId) query = query.eq("recruiter_id", ownerId);
+    const { data, error } = await query.select(JOB_COLUMNS).maybeSingle<JobRow>();
+    if (error) throw error;
+    return data ? toJob(data) : null;
+  }
+  const job = mockStore.jobs.find(
+    (j) => j.id === id && (!ownerId || j.recruiterId === ownerId)
+  );
+  if (!job) return null;
+  Object.assign(job, input, { updatedAt: new Date().toISOString() });
   return job;
 }
 
@@ -388,6 +505,30 @@ export async function deleteJob(
 }
 
 /* ------------------------------------------------------------------ */
+/* Contact messages                                                    */
+/* ------------------------------------------------------------------ */
+
+export async function createContactMessage(input: {
+  name: string;
+  email: string;
+  topic: string;
+  message: string;
+}): Promise<void> {
+  const sb = db();
+  if (sb) {
+    const { error } = await sb.from("contact_messages").insert(input);
+    if (error) throw error;
+    return;
+  }
+  mockStore.messages.unshift({
+    ...input,
+    id: `msg-${randomUUID().slice(0, 8)}`,
+    status: "open",
+    createdAt: new Date().toISOString(),
+  });
+}
+
+/* ------------------------------------------------------------------ */
 /* Admin                                                               */
 /* ------------------------------------------------------------------ */
 
@@ -397,26 +538,58 @@ export async function listRecruiters(): Promise<RecruiterSummary[]> {
   if (sb) {
     const { data, error } = await sb
       .from("recruiters")
-      .select("id, name, email, company, role, created_at, jobs(count)")
+      .select(`${RECRUITER_PUBLIC_COLUMNS}, jobs(count)`)
       .order("created_at", { ascending: false })
-      .limit(1000);
+      .limit(5000);
     if (error) throw error;
-    return (data as (Omit<RecruiterRow, "password_hash"> & { jobs: { count: number }[] })[]).map(
-      (row) => ({
-        id: row.id,
-        name: row.name,
-        email: row.email,
-        company: row.company ?? undefined,
-        role: row.role ?? "recruiter",
-        createdAt: new Date(row.created_at).toISOString(),
-        jobCount: row.jobs?.[0]?.count ?? 0,
-      })
-    );
+    return (
+      data as (Omit<RecruiterRow, "password_hash"> & { jobs: { count: number }[] })[]
+    ).map((row) => ({
+      ...toPublicRecruiter(row),
+      jobCount: row.jobs?.[0]?.count ?? 0,
+    }));
   }
   return mockStore.recruiters.map((r) => ({
     ...publicRecruiter(r),
     jobCount: mockStore.jobs.filter((j) => j.recruiterId === r.id).length,
   }));
+}
+
+export async function listContactMessages(): Promise<ContactMessage[]> {
+  const sb = db();
+  if (sb) {
+    const { data, error } = await sb
+      .from("contact_messages")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(5000)
+      .returns<MessageRow[]>();
+    if (error) throw error;
+    return data.map(toMessage);
+  }
+  return [...mockStore.messages];
+}
+
+export async function adminUpdateRecruiter(
+  id: string,
+  patch: { status?: AccountStatus; role?: UserRole }
+): Promise<Recruiter | null> {
+  const sb = db();
+  if (sb) {
+    if (!isUuid(id)) return null;
+    const { data, error } = await sb
+      .from("recruiters")
+      .update(patch)
+      .eq("id", id)
+      .select(RECRUITER_PUBLIC_COLUMNS)
+      .maybeSingle<Omit<RecruiterRow, "password_hash">>();
+    if (error) throw error;
+    return data ? toPublicRecruiter(data) : null;
+  }
+  const r = mockRecruiter(id);
+  if (!r) return null;
+  Object.assign(r, patch);
+  return publicRecruiter(r);
 }
 
 /** Deletes any job (admin moderation). */
@@ -452,5 +625,44 @@ export async function adminDeleteRecruiter(id: string): Promise<boolean> {
   if (idx === -1) return false;
   mockStore.recruiters.splice(idx, 1);
   mockStore.jobs = mockStore.jobs.filter((j) => j.recruiterId !== id);
+  return true;
+}
+
+export async function adminUpdateMessage(
+  id: string,
+  status: ContactMessage["status"]
+): Promise<boolean> {
+  const sb = db();
+  if (sb) {
+    if (!isUuid(id)) return false;
+    const { data, error } = await sb
+      .from("contact_messages")
+      .update({ status })
+      .eq("id", id)
+      .select("id");
+    if (error) throw error;
+    return data.length === 1;
+  }
+  const m = mockStore.messages.find((x) => x.id === id);
+  if (!m) return false;
+  m.status = status;
+  return true;
+}
+
+export async function adminDeleteMessage(id: string): Promise<boolean> {
+  const sb = db();
+  if (sb) {
+    if (!isUuid(id)) return false;
+    const { data, error } = await sb
+      .from("contact_messages")
+      .delete()
+      .eq("id", id)
+      .select("id");
+    if (error) throw error;
+    return data.length === 1;
+  }
+  const idx = mockStore.messages.findIndex((x) => x.id === id);
+  if (idx === -1) return false;
+  mockStore.messages.splice(idx, 1);
   return true;
 }

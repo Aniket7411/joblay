@@ -1,5 +1,6 @@
 import { fail, ok, serverError, validationFailed } from "@/lib/api";
-import { sendContactEmail } from "@/lib/mail";
+import { isMailConfigured, sendContactEmail } from "@/lib/mail";
+import { createContactMessage } from "@/lib/repository";
 import { contactSchema, contactTopics } from "@/lib/validations";
 
 // Best-effort per-instance throttle: 5 messages per IP per 10 minutes.
@@ -34,12 +35,27 @@ export async function POST(request: Request) {
     const topicLabel =
       contactTopics.find((t) => t.value === data.topic)?.label ?? "Message";
 
-    await sendContactEmail({
+    const message = {
       name: data.name,
-      email: data.email,
-      topicLabel,
+      email: data.email.trim().toLowerCase(),
+      topic: data.topic,
       message: data.message,
-    });
+    };
+
+    // Save for the admin panel, and email the inbox. Succeed if either works.
+    const [saved, emailed] = await Promise.allSettled([
+      createContactMessage(message),
+      isMailConfigured()
+        ? sendContactEmail({ ...message, topicLabel })
+        : Promise.reject(new Error("SMTP not configured")),
+    ]);
+    if (saved.status === "rejected") console.error("[contact] save failed", saved.reason);
+    if (emailed.status === "rejected" && isMailConfigured()) {
+      console.error("[contact] email failed", emailed.reason);
+    }
+    if (saved.status === "rejected" && emailed.status === "rejected") {
+      return fail("Couldn't send your message. Please try again later.", 503);
+    }
 
     return ok("Message sent");
   } catch (err) {

@@ -19,9 +19,11 @@ export interface JobPosting {
   contact: RecruiterContact;
   attachmentUrl?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export type UserRole = "recruiter" | "admin";
+export type AccountStatus = "active" | "suspended";
 
 export interface Recruiter {
   id: string;
@@ -29,6 +31,8 @@ export interface Recruiter {
   email: string;
   company?: string;
   role: UserRole;
+  status: AccountStatus;
+  lastLoginAt?: string;
   createdAt: string;
 }
 
@@ -71,4 +75,20 @@ export interface ApiResponse<T = unknown> {
   message: string;
   data?: T;
   errors?: Record<string, string[]>;
+}
+
+export interface ContactMessage {
+  id: string;
+  name: string;
+  email: string;
+  topic: string;
+  message: string;
+  status: "open" | "resolved";
+  createdAt: string;
+}
+
+export interface AdminOverview {
+  jobs: JobPosting[];
+  recruiters: RecruiterSummary[];
+  messages: ContactMessage[];
 }

@@ -55,3 +55,27 @@ create index if not exists jobs_tags_idx         on public.jobs using gin (tags)
 -- uses the secret key, which bypasses RLS.
 alter table public.recruiters enable row level security;
 alter table public.jobs       enable row level security;
+
+-- ── Admin features ──────────────────────────────────────────────────
+alter table public.recruiters
+  add column if not exists status text not null default 'active'
+  check (status in ('active', 'suspended'));
+alter table public.recruiters
+  add column if not exists last_login_at timestamptz;
+
+alter table public.jobs
+  add column if not exists updated_at timestamptz not null default now();
+
+-- Contact-page messages and job reports, reviewed in the admin panel.
+create table if not exists public.contact_messages (
+  id         uuid primary key default gen_random_uuid(),
+  name       text not null,
+  email      text not null,
+  topic      text not null,
+  message    text not null,
+  status     text not null default 'open' check (status in ('open', 'resolved')),
+  created_at timestamptz not null default now()
+);
+create index if not exists contact_messages_created_idx
+  on public.contact_messages (status, created_at desc);
+alter table public.contact_messages enable row level security;

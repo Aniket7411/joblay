@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Briefcase, Plus, Shield, Trash2 } from "lucide-react";
+import { Briefcase, Pencil, Plus, Shield, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -114,14 +114,22 @@ export function DashboardClient({ recruiter }: { recruiter: Recruiter }) {
                     ))}
                   </div>
                 </div>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  onClick={() => handleDelete(job.id)}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  Delete
-                </Button>
+                <div className="flex gap-2 shrink-0">
+                  <Link href={`/dashboard/jobs/${job.id}/edit`}>
+                    <Button variant="outline" size="sm">
+                      <Pencil className="h-3.5 w-3.5" />
+                      Edit
+                    </Button>
+                  </Link>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => handleDelete(job.id)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete
+                  </Button>
+                </div>
               </Card>
             </motion.div>
           ))}

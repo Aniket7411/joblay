@@ -11,6 +11,8 @@
   --saffron-dark: #e8850f;
   --india-green: #138808;
   --india-green-dark: #0f6d06;
+  /* Single-series bar fill (validated ≥3:1 vs surface) */
+  --chart-bar: #c2410c;
 }
 
 .dark {
@@ -24,6 +26,7 @@
   --saffron-dark: #ffb366;
   --india-green: #4ade4a;
   --india-green-dark: #22c55e;
+  --chart-bar: #cc6f1a;
 }
 
 @theme inline {
@@ -37,6 +40,7 @@
   --color-saffron-dark: var(--saffron-dark);
   --color-india-green: var(--india-green);
   --color-india-green-dark: var(--india-green-dark);
+  --color-chart-bar: var(--chart-bar);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

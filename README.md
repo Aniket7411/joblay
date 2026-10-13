@@ -33,6 +33,24 @@ If SMTP is not set, emails (including reset links) are printed to the server con
 3. **Vercel** — import the GitHub repo, then add every variable from `.env.example` under *Settings → Environment Variables*. Set `NEXT_PUBLIC_APP_URL` to your production URL (e.g. `https://joblay.vercel.app`) and generate a fresh `AUTH_SECRET`.
 4. Deploy. Check the Vercel function logs for the status panel. Register a recruiter account, post a job, and test *Forgot password* to confirm email works.
 
+## Admin panel
+
+Admins sign in on the normal login page and land on `/admin`:
+
+- **Overview** — totals, jobs by industry/location, latest jobs and employers
+- **Jobs** — every job with full details; edit or delete any job
+- **Employers** — every account with full details and their jobs; suspend / reactivate, email a password reset, make / remove admin, delete
+- **Messages** — contact-form messages and job reports; reply, resolve, delete
+- **Download Excel** — workbook with Summary, Jobs, Employers and Messages sheets
+
+Create an admin (or reset an admin's password — admins can't use email reset):
+
+```bash
+npm run create-admin -- someone@example.com "StrongPass123" "Their Name"
+```
+
+Suspended employers can't sign in and their jobs are hidden from the public board.
+
 ## API
 
 | Endpoint | Method | Auth | Purpose |
