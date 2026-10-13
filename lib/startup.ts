@@ -1,4 +1,4 @@
-import { isMailConfigured, verifyMailConnection } from "@/lib/mail";
+import { isMailConfigured, smtpUser, verifyMailConnection } from "@/lib/mail";
 import { bucketName, ensureBucket, getSupabase, isSupabaseConfigured } from "@/lib/supabase";
 
 /**
@@ -92,14 +92,14 @@ async function checkMail(): Promise<Line> {
     return {
       level: "warn",
       name: "Email (SMTP)",
-      detail: "not configured (SMTP_USER / SMTP_PASS) — emails are printed to this console",
+      detail: "not configured (EMAIL_USER / EMAIL_PASSWORD) — emails are printed to this console",
     };
   }
   try {
     await withTimeout(verifyMailConnection(), "SMTP");
-    return { level: "ok", name: "Email (SMTP)", detail: `signed in as ${process.env.SMTP_USER}` };
+    return { level: "ok", name: "Email (SMTP)", detail: `signed in as ${smtpUser()}` };
   } catch (err) {
-    return { level: "fail", name: "Email (SMTP)", detail: `${message(err)} — check SMTP_USER and the Gmail App Password` };
+    return { level: "fail", name: "Email (SMTP)", detail: `${message(err)} — check EMAIL_USER and the Gmail App Password (EMAIL_PASSWORD)` };
   }
 }
 

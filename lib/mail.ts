@@ -10,8 +10,17 @@ import nodemailer, { type Transporter } from "nodemailer";
  * When SMTP is not configured, emails are logged to the server console.
  */
 
+// EMAIL_USER / EMAIL_PASSWORD are accepted as aliases.
+export function smtpUser(): string | undefined {
+  return process.env.SMTP_USER || process.env.EMAIL_USER;
+}
+
+function smtpPass(): string | undefined {
+  return process.env.SMTP_PASS || process.env.EMAIL_PASSWORD;
+}
+
 export function isMailConfigured(): boolean {
-  return Boolean(process.env.SMTP_USER && process.env.SMTP_PASS);
+  return Boolean(smtpUser() && smtpPass());
 }
 
 let transporter: Transporter | null = null;
@@ -24,9 +33,9 @@ function getTransporter(): Transporter {
       port,
       secure: port === 465,
       auth: {
-        user: process.env.SMTP_USER,
+        user: smtpUser(),
         // Google shows App Passwords with spaces; SMTP needs them without.
-        pass: process.env.SMTP_PASS?.replace(/\s+/g, ""),
+        pass: smtpPass()?.replace(/\s+/g, ""),
       },
     });
   }
@@ -72,7 +81,7 @@ async function send(
     return;
   }
   await getTransporter().sendMail({
-    from: process.env.SMTP_FROM || process.env.SMTP_USER,
+    from: process.env.SMTP_FROM || `Joblay <${smtpUser()}>`,
     to,
     replyTo,
     subject,
@@ -125,7 +134,7 @@ export async function sendContactEmail(input: {
   topicLabel: string;
   message: string;
 }): Promise<void> {
-  const to = process.env.CONTACT_TO_EMAIL || process.env.SMTP_USER || "";
+  const to = process.env.CONTACT_TO_EMAIL || smtpUser() || "";
   const subject = `[Joblay] ${input.topicLabel} — ${input.name}`;
   const html = layout(
     escapeHtml(input.topicLabel),
