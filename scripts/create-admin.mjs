@@ -6,7 +6,7 @@
  *   npm run create-admin -- <email> <password> [name]
  *
  * Needs SUPABASE_URL and SUPABASE_SECRET_KEY, and the `role` column from
- * supabase/schema.sql. Also the only way to reset an admin password — admins
+ * supabase/migrations. Also the only way to reset an admin password — admins
  * can't use the email reset flow.
  */
 import { randomBytes, scryptSync } from "node:crypto";
@@ -61,7 +61,7 @@ async function main() {
 
   if (findError) {
     if (/role/.test(findError.message)) {
-      console.error("The `role` column is missing. Run supabase/schema.sql in the Supabase SQL Editor first.");
+      console.error("The `role` column is missing. Run `npm run db:migrate` first.");
     } else {
       console.error("Lookup failed:", findError.message);
     }

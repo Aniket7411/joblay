@@ -1,5 +1,6 @@
 import { createSign } from "node:crypto";
 import { after } from "next/server";
+import { isPublicSiteUrl, siteUrl } from "@/lib/siteUrl";
 
 /**
  * Tells search engines a job page changed so it's (re)crawled within hours.
@@ -12,24 +13,23 @@ import { after } from "next/server";
  *   the site in Google Search Console.
  */
 
-function siteUrl(): string | null {
-  const url = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
-  // Search engines can't crawl localhost.
-  if (!url || /localhost|127\.0\.0\.1/.test(url)) return null;
-  return url;
+/** Public site URL, or null on localhost (search engines can't crawl it). */
+function publicUrl(): string | null {
+  const url = siteUrl();
+  return isPublicSiteUrl(url) ? url : null;
 }
 
 export function indexingStatus() {
   return {
     indexNow: Boolean(process.env.INDEXNOW_KEY),
     google: Boolean(process.env.GOOGLE_INDEXING_CLIENT_EMAIL && process.env.GOOGLE_INDEXING_PRIVATE_KEY),
-    siteUrl: siteUrl(),
+    siteUrl: publicUrl(),
   };
 }
 
 /** Schedule a ping for /jobs/{id}. `removed` = the page now 404s. */
 export function notifyJobChanged(jobId: string, removed = false) {
-  const base = siteUrl();
+  const base = publicUrl();
   if (!base) return;
   const url = `${base}/jobs/${jobId}`;
   after(async () => {

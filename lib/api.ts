@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { ZodError } from "zod";
-import { DatabaseUnavailableError } from "@/lib/repository";
+import { DatabaseUnavailableError, SchemaOutdatedError } from "@/lib/repository";
 
 export function ok<T>(message: string, data?: T, init?: ResponseInit) {
   return NextResponse.json({ success: true, message, data }, init);
@@ -24,6 +24,10 @@ export function validationFailed(error: ZodError) {
 /** Maps unexpected errors to a JSON response and logs them. */
 export function serverError(err: unknown, context: string) {
   if (err instanceof SyntaxError) return fail("Invalid request body", 400);
+  if (err instanceof SchemaOutdatedError) {
+    console.error(`[${context}]`, err.message);
+    return fail("The site is being updated. Please try again in a few minutes.", 503);
+  }
   if (err instanceof DatabaseUnavailableError) {
     console.error(`[${context}]`, err.message);
     return fail("Service temporarily unavailable", 503);

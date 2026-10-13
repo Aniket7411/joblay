@@ -2,6 +2,8 @@ import { isAiEnabled } from "@/lib/ai/parseJd";
 import { indexingStatus } from "@/lib/indexing";
 import { isMailConfigured, smtpUser, verifyMailConnection } from "@/lib/mail";
 import { isTurnstileEnabled } from "@/lib/turnstile";
+import { SCHEMA_VERSION } from "@/lib/schemaVersion";
+import { isPublicSiteUrl, siteUrl } from "@/lib/siteUrl";
 import { bucketName, ensureBucket, getSupabase, isSupabaseConfigured } from "@/lib/supabase";
 
 /**
@@ -47,31 +49,35 @@ async function checkSupabase(): Promise<Line[]> {
   const lines: Line[] = [];
   const sb = getSupabase();
 
-  // Database tables
+  // Database: reachable, and schema at the version this code expects.
   try {
-    const counts: string[] = [];
-    for (const table of ["recruiters", "jobs"]) {
-      const { count, error } = await withTimeout(
-        // Not a HEAD request: those don't report a missing table as an error.
-        sb
-          .from(table)
-          .select(table === "recruiters" ? "id, role" : "id", { count: "exact" })
-          .limit(1),
-        "Database"
-      );
-      if (error) throw error;
-      counts.push(`${table}: ${count ?? 0}`);
+    const { data, error } = await withTimeout(
+      sb.from("schema_migrations").select("version").order("version", { ascending: false }).limit(1),
+      "Database"
+    );
+    // No tracking table yet = migrations never run through the runner.
+    const current = error ? null : (data?.[0]?.version ?? null);
+    if (error && !["PGRST205", "42P01"].includes(error.code ?? "")) throw error;
+
+    if (current !== null && current >= SCHEMA_VERSION) {
+      const { count } = await withTimeout(sb.from("jobs").select("id", { count: "exact", head: true }), "Database");
+      lines.push({ level: "ok", name: "Supabase DB", detail: `${host} · schema ${current} · ${count ?? 0} jobs` });
+    } else {
+      lines.push({
+        level: "fail",
+        name: "Supabase DB",
+        detail:
+          `${host} · schema ${current ?? "untracked"}, app needs ${SCHEMA_VERSION}. ` +
+          (process.env.SUPABASE_DB_URL
+            ? "Run `npm run db:migrate` (see the [db] lines above for the error)."
+            : "Add SUPABASE_DB_URL to .env and restart (applies automatically), or paste the pending files from supabase/migrations into the Supabase SQL Editor."),
+      });
     }
-    lines.push({ level: "ok", name: "Supabase DB", detail: `connected to ${host} (${counts.join(", ")})` });
   } catch (err) {
-    const code = (err as { code?: string }).code;
-    const missing = code === "PGRST205" || code === "42P01" || code === "42703" || /schema cache|does not exist/i.test(message(err));
     lines.push({
       level: "fail",
       name: "Supabase DB",
-      detail: missing
-        ? `${host} reachable but tables/columns are missing — run supabase/schema.sql in the Supabase SQL Editor`
-        : `${host}: ${message(err) || "request failed (check SUPABASE_SECRET_KEY)"}`,
+      detail: `${host}: ${message(err) || "request failed (check SUPABASE_SECRET_KEY)"}`,
     });
   }
 
@@ -107,16 +113,16 @@ async function checkMail(): Promise<Line> {
 }
 
 function checkAuth(): Line {
-  if (process.env.AUTH_SECRET && process.env.AUTH_SECRET.length >= 32) {
-    return { level: "ok", name: "Auth", detail: "AUTH_SECRET set" };
-  }
-  if (process.env.AUTH_SECRET) {
-    return { level: "warn", name: "Auth", detail: "AUTH_SECRET is short — use at least 32 random characters" };
+  const secret = process.env.AUTH_SECRET;
+  if (secret && secret.length >= 32) return { level: "ok", name: "Auth", detail: "AUTH_SECRET set" };
+  if (secret) return { level: "warn", name: "Auth", detail: "AUTH_SECRET is short — use at least 32 random characters" };
+  if (process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return { level: "ok", name: "Auth", detail: "session key derived from the Supabase secret key (set AUTH_SECRET to use your own)" };
   }
   return {
     level: process.env.NODE_ENV === "production" ? "fail" : "warn",
     name: "Auth",
-    detail: "AUTH_SECRET not set — using an insecure dev secret (required in production)",
+    detail: "AUTH_SECRET not set — using a dev-only secret",
   };
 }
 
@@ -146,18 +152,23 @@ function checkOptional(): Line[] {
         ? "off — set INDEXNOW_KEY (and optionally Google Indexing API keys)"
         : idx.siteUrl
           ? `${engines} notified on job changes`
-          : `${engines} configured, but NEXT_PUBLIC_APP_URL must be the live site URL`,
+          : `${engines} configured — starts once the site has a public URL`,
     },
   ];
 }
 
 function checkAppUrl(): Line {
-  const url = process.env.NEXT_PUBLIC_APP_URL;
-  if (url) return { level: "ok", name: "App URL", detail: url };
+  const url = siteUrl();
+  const source = process.env.NEXT_PUBLIC_APP_URL
+    ? "NEXT_PUBLIC_APP_URL"
+    : process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? "from Vercel"
+      : "default";
+  const local = !isPublicSiteUrl(url);
   return {
-    level: process.env.NODE_ENV === "production" ? "warn" : "ok",
+    level: local && process.env.NODE_ENV === "production" ? "warn" : "ok",
     name: "App URL",
-    detail: "NEXT_PUBLIC_APP_URL not set — reset links use the request's host",
+    detail: `${url} (${source})${local && process.env.NODE_ENV === "production" ? " — set NEXT_PUBLIC_APP_URL to your domain" : ""}`,
   };
 }
 

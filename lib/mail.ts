@@ -1,4 +1,5 @@
 import nodemailer, { type Transporter } from "nodemailer";
+import { siteUrl } from "@/lib/siteUrl";
 
 /**
  * SMTP mail (Gmail by default).
@@ -43,7 +44,7 @@ function getTransporter(): Transporter {
 }
 
 function appUrl(): string {
-  return (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(
+  return siteUrl().replace(
     /\/$/,
     ""
   );

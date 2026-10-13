@@ -20,6 +20,7 @@ import { ContactActions } from "@/components/jobs/ContactActions";
 import { getCurrentRecruiter } from "@/lib/auth/current";
 import { formatExperience, formatSalary, postedAgo } from "@/lib/jobQuery";
 import { findRecruiterById, getJobById, isJobLive } from "@/lib/repository";
+import { isPublicSiteUrl, siteUrl } from "@/lib/siteUrl";
 import type { JobPosting } from "@/types";
 
 type Params = Promise<{ id: string }>;
@@ -51,9 +52,9 @@ export default async function JobPage({ params }: { params: Params }) {
   if (!job) notFound();
 
   const h = await headers();
-  const origin =
-    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
-    `${h.get("x-forwarded-proto") ?? "http"}://${h.get("host")}`;
+  const origin = isPublicSiteUrl()
+    ? siteUrl()
+    : `${h.get("x-forwarded-proto") ?? "http"}://${h.get("host")}`;
   const url = `${origin}/jobs/${job.id}`;
   // eslint-disable-next-line react-hooks/purity -- request time
   const now = Date.now();

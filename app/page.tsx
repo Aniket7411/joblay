@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { JobSearch } from "@/components/jobs/JobSearch";
 import { activeFilterCount, parseJobQuery } from "@/lib/jobQuery";
-import { searchJobs } from "@/lib/repository";
+import { SchemaOutdatedError, searchJobs } from "@/lib/repository";
 import type { JobPage } from "@/types";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -21,15 +21,16 @@ export async function generateMetadata({ searchParams }: { searchParams: SearchP
 export default async function HomePage({ searchParams }: { searchParams: SearchParams }) {
   const query = parseJobQuery(await searchParams);
 
-  let result: JobPage | null;
+  let result: JobPage | null = null;
+  let updating = false;
   try {
     result = await searchJobs(query);
   } catch (err) {
-    console.error("[home] job search failed", err);
-    result = null;
+    updating = err instanceof SchemaOutdatedError;
+    console.error("[home] job search failed", err instanceof Error ? err.message : err);
   }
 
   // eslint-disable-next-line react-hooks/purity -- request time, used for "posted N days ago"
   const now = Date.now();
-  return <JobSearch query={query} result={result} now={now} />;
+  return <JobSearch query={query} result={result} now={now} updating={updating} />;
 }

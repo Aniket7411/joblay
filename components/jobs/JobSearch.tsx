@@ -27,10 +27,13 @@ export function JobSearch({
   query,
   result,
   now,
+  updating = false,
 }: {
   query: JobQuery;
   result: JobPage | null;
   now: number;
+  /** The database is being upgraded (schema behind the code). */
+  updating?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -208,7 +211,11 @@ export function JobSearch({
 
           <div className={cn("transition-opacity", pending && "opacity-60")}>
             {result === null ? (
-              <Empty title="Couldn't load jobs" text="Please refresh the page or try again in a moment." />
+              updating ? (
+                <Empty title="We're updating Joblay" text="Jobs will be back in a few minutes. Thanks for your patience." />
+              ) : (
+                <Empty title="Couldn't load jobs" text="Please refresh the page or try again in a moment." />
+              )
             ) : result.total === 0 ? (
               filterCount > 0 || query.q ? (
                 <Empty title="No jobs match these filters" text="Try removing a filter or two.">

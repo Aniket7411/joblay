@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 
 export const SESSION_COOKIE = "joblay_session";
@@ -15,11 +15,20 @@ interface SessionPayload {
   exp: number; // unix seconds
 }
 
+/**
+ * Session signing key: AUTH_SECRET, or else one derived from the Supabase
+ * secret key (private, stable, server-only) so sign-in keeps working without
+ * extra setup. Setting AUTH_SECRET later signs everyone out once.
+ */
 function getSecret(): string {
   const secret = process.env.AUTH_SECRET;
   if (secret) return secret;
+  const supabaseKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (supabaseKey) {
+    return createHash("sha256").update(`joblay-session:${supabaseKey}`).digest("hex");
+  }
   if (process.env.NODE_ENV === "production") {
-    throw new Error("AUTH_SECRET must be set in production");
+    throw new Error("Set AUTH_SECRET (or Supabase keys) in production");
   }
   return "joblay-dev-secret-change-me";
 }

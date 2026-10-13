@@ -1,13 +1,13 @@
 import type { MetadataRoute } from "next";
 import { emptyJobQuery, MAX_PAGES } from "@/lib/jobQuery";
 import { searchJobs } from "@/lib/repository";
+import { siteUrl } from "@/lib/siteUrl";
 
 // Rebuilt at most hourly.
 export const revalidate = 3600;
 
-const base = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
-
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const base = siteUrl();
   const pages: MetadataRoute.Sitemap = ["", "/about", "/safety", "/faq", "/contact", "/privacy", "/terms"].map(
     (path) => ({ url: `${base}${path}`, changeFrequency: path ? "monthly" : "hourly", priority: path ? 0.3 : 1 })
   );

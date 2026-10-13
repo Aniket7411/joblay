@@ -7,7 +7,7 @@ A minimalist job board. Candidates browse and filter jobs and contact recruiters
 | Concern | Service |
 |---|---|
 | App | Next.js 16 (App Router), React 19, Tailwind 4, Framer Motion |
-| Database | **Supabase Postgres** — recruiters, jobs, reset tokens (`supabase/schema.sql`) |
+| Database | **Supabase Postgres** — recruiters, jobs, reset tokens (`supabase/migrations/`) |
 | File storage | **Supabase Storage** — optional JD attachments (PDF/Word) |
 | Email | **Gmail SMTP** (Nodemailer) — password reset + welcome emails |
 | Auth | Email/password, scrypt-hashed, signed httpOnly session cookie |
@@ -26,9 +26,19 @@ If Supabase is not configured, local dev falls back to in-memory sample data (lo
 
 If SMTP is not set, emails (including reset links) are printed to the server console.
 
+## Database migrations
+
+Schema changes live in `supabase/migrations/NNNN_name.sql` and are applied in order, once each, tracked in the `schema_migrations` table.
+
+- **Automatic:** set `SUPABASE_DB_URL` (Supabase → Connect → *Session pooler* URI). Pending migrations then run before every `npm run dev` and `npm run build`, so a Vercel deploy upgrades the database first. A failing migration is rolled back and stops the build.
+- **Manual:** `npm run db:status` lists what's applied; `npm run db:migrate` applies the rest. Without a DB URL, paste each pending file into the Supabase SQL Editor — every file is safe to re-run and records itself.
+- **Adding a change:** create the next numbered file and bump `SCHEMA_VERSION` in `lib/schemaVersion.ts` (the runner refuses to run if they disagree).
+
+If the database is behind the code, the startup panel says which version is missing and users see "being updated" instead of errors.
+
 ## Go live on Vercel
 
-1. **Supabase** — create a project, open *SQL Editor*, paste `supabase/schema.sql` and run it. Copy the Project URL and the **secret** key (`sb_secret_...`) from *Project Settings → API Keys*. The `jd-attachments` bucket is created automatically on first start.
+1. **Supabase** — create a project. Copy the Project URL and the **secret** key (`sb_secret_...`) from *Project Settings → API Keys*, and the *Session pooler* connection string as `SUPABASE_DB_URL`. Tables and the `jd-attachments` bucket are created automatically.
 2. **Gmail** — turn on 2-Step Verification, then create an App Password at <https://myaccount.google.com/apppasswords>.
 3. **Vercel** — import the GitHub repo, then add every variable from `.env.example` under *Settings → Environment Variables*. Set `NEXT_PUBLIC_APP_URL` to your production URL (e.g. `https://joblay.vercel.app`) and generate a fresh `AUTH_SECRET`.
 4. Deploy. Check the Vercel function logs for the status panel. Register a recruiter account, post a job, and test *Forgot password* to confirm email works.
@@ -94,7 +104,7 @@ Jobs expire 30 days after posting (recruiters can renew). Each job has a public 
 
 - `lib/repository.ts` — all data access (Supabase, or in-memory in dev)
 - `lib/startup.ts` + `instrumentation.ts` — startup status panel
-- `supabase/schema.sql` — tables, indexes, row-level security
+- `supabase/migrations/` + `scripts/migrate.mjs` — schema and the migration runner
 - `lib/auth/` — password hashing, session cookie, current recruiter
 - `lib/mail.ts` — Gmail SMTP emails
 - `lib/supabase.ts` — Supabase client and attachment uploads

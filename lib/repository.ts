@@ -18,13 +18,32 @@ import type {
 /**
  * Single data-access layer. Uses Supabase Postgres when SUPABASE_URL and
  * SUPABASE_SECRET_KEY are set, otherwise an in-memory store (local dev only —
- * production requires Supabase). Schema: supabase/schema.sql
+ * production requires Supabase). Schema: supabase/migrations/
  */
 
 export class DatabaseUnavailableError extends Error {
   constructor() {
     super("Database is not configured. Set SUPABASE_URL and SUPABASE_SECRET_KEY.");
   }
+}
+
+/**
+ * The database is reachable but older than this code (a migration hasn't
+ * been applied yet). Shown to users as "being updated", never as a crash.
+ */
+export class SchemaOutdatedError extends Error {
+  constructor(detail: string) {
+    super(`Database schema is out of date — run \`npm run db:migrate\`. (${detail})`);
+  }
+}
+
+// Postgres / PostgREST codes for a missing table or column.
+const SCHEMA_ERROR_CODES = new Set(["42703", "42P01", "PGRST204", "PGRST205"]);
+
+/** Normalizes a Supabase error, flagging schema-version problems. */
+function dbError(error: { code?: string; message: string }): Error {
+  if (error.code && SCHEMA_ERROR_CODES.has(error.code)) return new SchemaOutdatedError(error.message);
+  return Object.assign(new Error(error.message), error);
 }
 
 /** Supabase client, or null to use the in-memory dev store. */
@@ -241,7 +260,7 @@ export async function findRecruiterByEmail(
       .select(RECRUITER_COLUMNS)
       .eq("email", normalized)
       .maybeSingle<RecruiterRow>();
-    if (error) throw error;
+    if (error) throw dbError(error);
     return data ? toRecruiter(data) : null;
   }
   return mockStore.recruiters.find((r) => r.email === normalized) ?? null;
@@ -258,7 +277,7 @@ export async function findRecruiterById(
       .select(RECRUITER_COLUMNS)
       .eq("id", id)
       .maybeSingle<RecruiterRow>();
-    if (error) throw error;
+    if (error) throw dbError(error);
     return data ? toRecruiter(data) : null;
   }
   return mockRecruiter(id) ?? null;
@@ -284,7 +303,7 @@ export async function createRecruiter(input: {
       })
       .select(RECRUITER_COLUMNS)
       .single<RecruiterRow>();
-    if (error) throw error;
+    if (error) throw dbError(error);
     return toRecruiter(data);
   }
   const recruiter = {
@@ -329,7 +348,7 @@ export async function setResetToken(
         reset_token_expires: expires.toISOString(),
       })
       .eq("id", recruiterId);
-    if (error) throw error;
+    if (error) throw dbError(error);
     return;
   }
   const r = mockRecruiter(recruiterId);
@@ -357,7 +376,7 @@ export async function resetPasswordWithToken(
       .eq("reset_token_hash", tokenHash)
       .gt("reset_token_expires", new Date().toISOString())
       .select("id");
-    if (error) throw error;
+    if (error) throw dbError(error);
     return data.length === 1;
   }
   const r = mockStore.recruiters.find(
@@ -455,7 +474,7 @@ export async function searchJobs(q: JobQuery): Promise<JobPage> {
     query = query.order("created_at", { ascending: false }).range(0, limit - 1);
 
     const { data, error, count } = await query.returns<JobRow[]>();
-    if (error) throw error;
+    if (error) throw dbError(error);
     const total = count ?? data.length;
     return { jobs: data.map(toJob), total, page: q.page, pageSize: PAGE_SIZE, hasMore: total > limit };
   }
@@ -498,7 +517,7 @@ export async function listJobs(opts: { recruiterId?: string } = {}): Promise<Job
       query = query.eq("recruiter_id", opts.recruiterId);
     }
     const { data, error } = await query.returns<JobRow[]>();
-    if (error) throw error;
+    if (error) throw dbError(error);
     return data.map(toJob);
   }
   return [...mockStore.jobs]
@@ -520,7 +539,7 @@ export async function getJobById(id: string): Promise<JobPosting | null> {
       .select(JOB_COLUMNS)
       .eq("id", id)
       .maybeSingle<JobRow>();
-    if (error) throw error;
+    if (error) throw dbError(error);
     return data ? toJob(data) : null;
   }
   return mockStore.jobs.find((j) => j.id === id) ?? null;
@@ -534,7 +553,7 @@ export async function createJob(input: NewJob): Promise<JobPosting> {
       .insert({ ...jobToRow(input), recruiter_id: input.recruiterId, expires_at: newExpiry() })
       .select(JOB_COLUMNS)
       .single<JobRow>();
-    if (error) throw error;
+    if (error) throw dbError(error);
     return toJob(data);
   }
   const now = new Date().toISOString();
@@ -568,7 +587,7 @@ export async function updateJob(
       .eq("id", id);
     if (ownerId) query = query.eq("recruiter_id", ownerId);
     const { data, error } = await query.select(JOB_COLUMNS).maybeSingle<JobRow>();
-    if (error) throw error;
+    if (error) throw dbError(error);
     return data ? toJob(data) : null;
   }
   const job = mockStore.jobs.find(
@@ -605,7 +624,7 @@ export async function setJobStatus(
       .eq("id", id);
     if (ownerId) query = query.eq("recruiter_id", ownerId);
     const { data, error } = await query.select(JOB_COLUMNS).maybeSingle<JobRow>();
-    if (error) throw error;
+    if (error) throw dbError(error);
     return data ? toJob(data) : null;
   }
   const job = mockStore.jobs.find((j) => j.id === id && (!ownerId || j.recruiterId === ownerId));
@@ -628,7 +647,7 @@ export async function deleteJob(
       .eq("id", id)
       .eq("recruiter_id", recruiterId)
       .select("id");
-    if (error) throw error;
+    if (error) throw dbError(error);
     return data.length === 1;
   }
   const idx = mockStore.jobs.findIndex(
@@ -652,7 +671,7 @@ export async function createContactMessage(input: {
   const sb = db();
   if (sb) {
     const { error } = await sb.from("contact_messages").insert(input);
-    if (error) throw error;
+    if (error) throw dbError(error);
     return;
   }
   mockStore.messages.unshift({
@@ -676,7 +695,7 @@ export async function listRecruiters(): Promise<RecruiterSummary[]> {
       .select(`${RECRUITER_PUBLIC_COLUMNS}, jobs(count)`)
       .order("created_at", { ascending: false })
       .limit(5000);
-    if (error) throw error;
+    if (error) throw dbError(error);
     return (
       data as (Omit<RecruiterRow, "password_hash"> & { jobs: { count: number }[] })[]
     ).map((row) => ({
@@ -699,7 +718,7 @@ export async function listContactMessages(): Promise<ContactMessage[]> {
       .order("created_at", { ascending: false })
       .limit(5000)
       .returns<MessageRow[]>();
-    if (error) throw error;
+    if (error) throw dbError(error);
     return data.map(toMessage);
   }
   return [...mockStore.messages];
@@ -718,7 +737,7 @@ export async function adminUpdateRecruiter(
       .eq("id", id)
       .select(RECRUITER_PUBLIC_COLUMNS)
       .maybeSingle<Omit<RecruiterRow, "password_hash">>();
-    if (error) throw error;
+    if (error) throw dbError(error);
     return data ? toPublicRecruiter(data) : null;
   }
   const r = mockRecruiter(id);
@@ -733,7 +752,7 @@ export async function adminDeleteJob(id: string): Promise<boolean> {
   if (sb) {
     if (!isUuid(id)) return false;
     const { data, error } = await sb.from("jobs").delete().eq("id", id).select("id");
-    if (error) throw error;
+    if (error) throw dbError(error);
     return data.length === 1;
   }
   const idx = mockStore.jobs.findIndex((j) => j.id === id);
@@ -753,7 +772,7 @@ export async function adminDeleteRecruiter(id: string): Promise<boolean> {
       .eq("id", id)
       .eq("role", "recruiter")
       .select("id");
-    if (error) throw error;
+    if (error) throw dbError(error);
     return data.length === 1;
   }
   const idx = mockStore.recruiters.findIndex((r) => r.id === id && r.role === "recruiter");
@@ -775,7 +794,7 @@ export async function adminUpdateMessage(
       .update({ status })
       .eq("id", id)
       .select("id");
-    if (error) throw error;
+    if (error) throw dbError(error);
     return data.length === 1;
   }
   const m = mockStore.messages.find((x) => x.id === id);
@@ -793,7 +812,7 @@ export async function adminDeleteMessage(id: string): Promise<boolean> {
       .delete()
       .eq("id", id)
       .select("id");
-    if (error) throw error;
+    if (error) throw dbError(error);
     return data.length === 1;
   }
   const idx = mockStore.messages.findIndex((x) => x.id === id);
