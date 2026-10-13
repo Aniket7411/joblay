@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence } from "framer-motion";
 import { JobCard } from "@/components/jobs/JobCard";
 import { FilterBar } from "@/components/jobs/FilterBar";
 import { JobHero } from "@/components/jobs/JobHero";
 import { Button } from "@/components/ui/Button";
-import { DestinationCardSkeleton } from "@/components/ui/Skeleton";
 import { useDebounce } from "@/hooks/useDebounce";
 import type { JobFilters, JobPosting } from "@/types";
 
@@ -52,29 +51,15 @@ function filterJobs(jobs: JobPosting[], filters: JobFilters): JobPosting[] {
   });
 }
 
-export function JobBoard() {
-  const [jobs, setJobs] = useState<JobPosting[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);
+/**
+ * Jobs are loaded on the server and passed in; all filtering happens in the
+ * browser, so the board makes no API calls. `jobs` is null if loading failed.
+ */
+export function JobBoard({ jobs: initialJobs }: { jobs: JobPosting[] | null }) {
+  const jobs = initialJobs ?? [];
+  const loadError = initialJobs === null;
   const [filters, setFilters] = useState<JobFilters>(emptyFilters);
   const debouncedSearch = useDebounce(filters.search, 250);
-
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      try {
-        const res = await fetch("/api/jobs");
-        const json = await res.json();
-        if (json.success) setJobs(json.data ?? []);
-        else setLoadError(true);
-      } catch {
-        setLoadError(true);
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-  }, []);
 
   const filtered = useMemo(
     () => filterJobs(jobs, { ...filters, search: debouncedSearch }),
@@ -88,18 +73,10 @@ export function JobBoard() {
 
       <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10 lg:py-14">
         <p className="text-sm text-muted-foreground mb-6">
-          {loading
-            ? "Loading roles..."
-            : `${filtered.length} open role${filtered.length !== 1 ? "s" : ""}`}
+          {`${filtered.length} open role${filtered.length !== 1 ? "s" : ""}`}
         </p>
 
-        {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <DestinationCardSkeleton key={i} />
-            ))}
-          </div>
-        ) : loadError ? (
+        {loadError ? (
           <div className="text-center py-20">
             <p className="text-lg font-medium">Couldn&apos;t load jobs</p>
             <p className="text-muted-foreground mt-2">

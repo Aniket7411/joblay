@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Briefcase,
@@ -25,25 +25,20 @@ const navLinks = [
   { href: "/login", label: "Recruiter", icon: Briefcase },
 ];
 
+const noopSubscribe = () => () => {};
+
 export function Navbar() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const { theme, setTheme } = useTheme();
   const mounted = useMounted();
-  const [signedIn, setSignedIn] = useState(false);
-
-  // Re-check on navigation so the header reflects sign-in / sign-out.
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/auth/me")
-      .then((res) => {
-        if (!cancelled) setSignedIn(res.ok);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [pathname]);
+  // Read the signed-in marker cookie (set/cleared by the auth API) — no
+  // network request. Re-read on every render, so navigation picks up changes.
+  const signedIn = useSyncExternalStore(
+    noopSubscribe,
+    () => document.cookie.includes("joblay_signed_in=1"),
+    () => false
+  );
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/60 bg-background/80 backdrop-blur-xl">

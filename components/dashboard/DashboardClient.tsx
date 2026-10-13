@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -8,19 +8,17 @@ import { Briefcase, Pencil, Plus, Shield, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { useFetch } from "@/hooks/useFetch";
 import type { JobPosting, Recruiter } from "@/types";
 
-export function DashboardClient({ recruiter }: { recruiter: Recruiter }) {
+export function DashboardClient({
+  recruiter,
+  initialJobs,
+}: {
+  recruiter: Recruiter;
+  initialJobs: JobPosting[];
+}) {
   const router = useRouter();
-  const [jobs, setJobs] = useState<JobPosting[]>([]);
-  const { execute, loading } = useFetch<JobPosting[]>();
-
-  useEffect(() => {
-    execute("/api/jobs?mine=1").then((result) => {
-      if (result.success && result.data) setJobs(result.data);
-    });
-  }, [execute]);
+  const [jobs, setJobs] = useState(initialJobs);
 
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this job posting?")) return;
@@ -76,9 +74,7 @@ export function DashboardClient({ recruiter }: { recruiter: Recruiter }) {
         Your Past JDs ({jobs.length})
       </h2>
 
-      {loading ? (
-        <p className="text-muted-foreground">Loading your postings...</p>
-      ) : jobs.length === 0 ? (
+      {jobs.length === 0 ? (
         <Card className="p-10 text-center">
           <p className="text-muted-foreground mb-4">No job postings yet.</p>
           <Link href="/dashboard/post">

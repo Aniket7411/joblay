@@ -62,7 +62,6 @@ Suspended employers can't sign in and their jobs are hidden from the public boar
 | `/api/auth/register` | POST | — | Create account + sign in |
 | `/api/auth/login` | POST | — | Sign in |
 | `/api/auth/logout` | POST | — | Sign out |
-| `/api/auth/me` | GET | — | Current recruiter |
 | `/api/auth/forgot-password` | POST | — | Email a reset link (valid 1 hour, single use) |
 | `/api/auth/reset-password` | POST | — | Set a new password with the token |
 

@@ -2,6 +2,12 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 
 export const SESSION_COOKIE = "joblay_session";
+/**
+ * Readable-by-JS marker so the UI can show signed-in navigation without an
+ * API round trip. Carries no identity; the httpOnly session cookie is still
+ * what authorizes every request.
+ */
+export const SIGNED_IN_HINT_COOKIE = "joblay_signed_in";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
 
 interface SessionPayload {
@@ -62,11 +68,19 @@ export async function setSessionCookie(recruiterId: string) {
     path: "/",
     maxAge: SESSION_TTL_SECONDS,
   });
+  store.set(SIGNED_IN_HINT_COOKIE, "1", {
+    httpOnly: false,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: SESSION_TTL_SECONDS,
+  });
 }
 
 export async function clearSessionCookie() {
   const store = await cookies();
   store.delete(SESSION_COOKIE);
+  store.delete(SIGNED_IN_HINT_COOKIE);
 }
 
 /** Recruiter id from the signed session cookie, or null. */

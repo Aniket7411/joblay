@@ -29,7 +29,6 @@ import {
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { useFetch } from "@/hooks/useFetch";
 import { industries, locations } from "@/lib/data/filterHierarchy";
 import { cn } from "@/lib/utils";
 import { contactTopics } from "@/lib/validations";
@@ -70,19 +69,18 @@ async function api(url: string, method: string, body?: unknown) {
   return (await res.json()) as { success: boolean; message: string; data?: unknown };
 }
 
-export function AdminClient({ admin }: { admin: Recruiter }) {
+export function AdminClient({
+  admin,
+  initialData,
+}: {
+  admin: Recruiter;
+  initialData: AdminOverview;
+}) {
   const router = useRouter();
-  const { execute, loading, error } = useFetch<AdminOverview>();
-  const [data, setData] = useState<AdminOverview>({ jobs: [], recruiters: [], messages: [] });
+  const [data, setData] = useState(initialData);
   const [tab, setTab] = useState<Tab>("overview");
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
   const [weekAgo] = useState(() => Date.now() - WEEK_MS);
-
-  useEffect(() => {
-    execute("/api/admin/overview").then((result) => {
-      if (result.success && result.data) setData(result.data);
-    });
-  }, [execute]);
 
   useEffect(() => {
     if (!notice) return;
@@ -259,11 +257,7 @@ export function AdminClient({ admin }: { admin: Recruiter }) {
         </div>
       </div>
 
-      {error ? (
-        <Card className="p-8 text-center text-red-500">{error}</Card>
-      ) : loading ? (
-        <p className="text-muted-foreground">Loading...</p>
-      ) : tab === "overview" ? (
+      {tab === "overview" ? (
         <OverviewTab
           data={data}
           employers={employers}
