@@ -1,18 +1,35 @@
-import { connection } from "next/server";
-import { JobBoard } from "@/components/jobs/JobBoard";
-import { listJobs } from "@/lib/repository";
-import type { JobPosting } from "@/types";
+import type { Metadata } from "next";
+import { JobSearch } from "@/components/jobs/JobSearch";
+import { activeFilterCount, parseJobQuery } from "@/lib/jobQuery";
+import { searchJobs } from "@/lib/repository";
+import type { JobPage } from "@/types";
 
-export default async function HomePage() {
-  // Render per request so newly posted jobs show up immediately.
-  await connection();
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
-  let jobs: JobPosting[] | null;
+export async function generateMetadata({ searchParams }: { searchParams: SearchParams }): Promise<Metadata> {
+  const q = parseJobQuery(await searchParams);
+  const what = q.q || q.tags[0] || q.subRole[0] || q.industry[0];
+  const where = q.location.length === 1 ? q.location[0] : "";
+  if (!what && !where) return {};
+  return {
+    title: `${what ? `${what} jobs` : "Jobs"}${where ? ` in ${where}` : ""}`,
+    // Index the plain board and single-facet pages; not every combination.
+    robots: activeFilterCount(q) + (q.q ? 1 : 0) > 2 ? { index: false } : undefined,
+  };
+}
+
+export default async function HomePage({ searchParams }: { searchParams: SearchParams }) {
+  const query = parseJobQuery(await searchParams);
+
+  let result: JobPage | null;
   try {
-    jobs = await listJobs();
+    result = await searchJobs(query);
   } catch (err) {
-    console.error("[home] failed to load jobs", err);
-    jobs = null;
+    console.error("[home] job search failed", err);
+    result = null;
   }
-  return <JobBoard jobs={jobs} />;
+
+  // eslint-disable-next-line react-hooks/purity -- request time, used for "posted N days ago"
+  const now = Date.now();
+  return <JobSearch query={query} result={result} now={now} />;
 }

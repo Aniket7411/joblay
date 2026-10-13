@@ -15,7 +15,18 @@ import { jobPostSchema, type JobPostFormData } from "@/lib/validations";
  * Validates a job create/update request body. Returns the normalized input,
  * or a ready-to-send error response.
  */
+const NUMERIC_FIELDS = ["experienceMin", "experienceMax", "salaryMin", "salaryMax", "openings"];
+
 export function parseJobBody(body: unknown): JobInput | NextResponse {
+  // API clients may send numbers; the form sends strings. Normalize first.
+  if (body && typeof body === "object") {
+    body = { ...body };
+    for (const key of NUMERIC_FIELDS) {
+      const v = (body as Record<string, unknown>)[key];
+      if (typeof v === "number") (body as Record<string, unknown>)[key] = String(v);
+      if (v === null) (body as Record<string, unknown>)[key] = "";
+    }
+  }
   const parsed = jobPostSchema.safeParse(body);
   if (!parsed.success) return validationFailed(parsed.error);
   const data = parsed.data;
@@ -37,6 +48,7 @@ export function parseJobBody(body: unknown): JobInput | NextResponse {
     return fail("Invalid attachment", 400);
   }
 
+  const salaryMin = data.salaryMin ? Number(data.salaryMin) : undefined;
   return {
     title: data.title.trim(),
     company: data.company.trim(),
@@ -56,6 +68,15 @@ export function parseJobBody(body: unknown): JobInput | NextResponse {
       phone: data.contactPhone?.trim() || undefined,
     },
     attachmentUrl: data.attachmentUrl || undefined,
+    workMode: data.workMode,
+    jobType: data.jobType,
+    education: data.education,
+    experienceMin: Number(data.experienceMin),
+    experienceMax: Number(data.experienceMax),
+    // Only a minimum given → treat as a fixed figure (max = min).
+    salaryMin,
+    salaryMax: salaryMin === undefined ? undefined : Number(data.salaryMax || data.salaryMin),
+    openings: Number(data.openings),
   };
 }
 
@@ -72,6 +93,14 @@ export function jobToFormValues(job: {
   criteria: string[];
   contact: { name?: string; email?: string; phone?: string };
   attachmentUrl?: string;
+  workMode: string;
+  jobType: string;
+  education: string;
+  experienceMin: number;
+  experienceMax: number;
+  salaryMin?: number;
+  salaryMax?: number;
+  openings: number;
 }): JobPostFormData {
   return {
     title: job.title,
@@ -87,5 +116,13 @@ export function jobToFormValues(job: {
     contactEmail: job.contact.email ?? "",
     contactPhone: job.contact.phone ?? "",
     attachmentUrl: job.attachmentUrl ?? "",
+    workMode: job.workMode as JobPostFormData["workMode"],
+    jobType: job.jobType as JobPostFormData["jobType"],
+    education: job.education as JobPostFormData["education"],
+    experienceMin: String(job.experienceMin),
+    experienceMax: String(job.experienceMax),
+    salaryMin: job.salaryMin === undefined ? "" : String(job.salaryMin),
+    salaryMax: job.salaryMax === undefined ? "" : String(job.salaryMax),
+    openings: String(job.openings),
   };
 }

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { educationLevels, jobTypes, workModes } from "@/lib/data/filterHierarchy";
 
 const contactFields = z.object({
   contactName: z.string().max(80).optional().or(z.literal("")),
@@ -11,22 +12,37 @@ const contactFields = z.object({
     .or(z.literal("")),
 });
 
+const yearsField = z.string().regex(/^\d{1,2}$/, "Select experience");
+const lpaField = z
+  .string()
+  .regex(/^\d{0,3}(\.\d{1,2})?$/, "Enter salary in LPA, e.g. 4.5")
+  .optional()
+  .or(z.literal(""));
+
 export const jobPostSchema = z
   .object({
     title: z.string().min(3, "Title must be at least 3 characters").max(120),
     company: z.string().min(2, "Company is required").max(80),
     location: z.string().min(1, "Location is required"),
-    jobProfile: z.string().min(1, "Job profile is required"),
+    jobProfile: z.string().min(1, "Seniority is required"),
     industry: z.string().min(1, "Industry is required"),
     subRole: z.string().min(1, "Sub-role is required"),
-    tags: z.array(z.string()).min(1, "Select at least one tag"),
+    tags: z.array(z.string()).min(1, "Select at least one skill"),
+    workMode: z.enum(workModes, { message: "Select work mode" }),
+    jobType: z.enum(jobTypes, { message: "Select job type" }),
+    education: z.enum(educationLevels, { message: "Select education" }),
+    experienceMin: yearsField,
+    experienceMax: yearsField,
+    salaryMin: lpaField,
+    salaryMax: lpaField,
+    openings: z.string().regex(/^[1-9]\d{0,3}$/, "Enter number of openings"),
     description: z
       .string()
       .min(20, "Description must be at least 20 characters")
-      .max(3000),
+      .max(5000),
     criteria: z
       .string()
-      .min(10, "Add at least one criterion")
+      .min(3, "Add at least one requirement")
       .max(2000),
     attachmentUrl: z.string().url().max(500).optional().or(z.literal("")),
     ...contactFields.shape,
@@ -42,7 +58,19 @@ export const jobPostSchema = z
       message: "At least one contact field (Name, Email, or Phone) is required",
       path: ["contactName"],
     }
-  );
+  )
+  .refine((d) => Number(d.experienceMax) >= Number(d.experienceMin), {
+    message: "Max experience must be at least the minimum",
+    path: ["experienceMax"],
+  })
+  .refine((d) => !d.salaryMax || Boolean(d.salaryMin), {
+    message: "Enter the minimum salary too",
+    path: ["salaryMin"],
+  })
+  .refine((d) => !d.salaryMin || !d.salaryMax || Number(d.salaryMax) >= Number(d.salaryMin), {
+    message: "Max salary must be at least the minimum",
+    path: ["salaryMax"],
+  });
 
 export const loginSchema = z.object({
   email: z.string().email("Please enter a valid email address"),

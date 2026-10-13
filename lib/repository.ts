@@ -3,10 +3,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { mockStore } from "@/lib/data/mockStore";
 import { hashToken } from "@/lib/auth/password";
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
+import { PAGE_SIZE, type JobQuery } from "@/lib/jobQuery";
 import type {
   AccountStatus,
   ContactMessage,
+  JobPage,
   JobPosting,
+  JobStatus,
   Recruiter,
   RecruiterSummary,
   UserRole,
@@ -37,19 +40,16 @@ export interface RecruiterWithHash extends Recruiter {
   passwordHash: string;
 }
 
-export interface JobQuery {
-  recruiterId?: string;
-  location?: string;
-  jobProfile?: string;
-  industry?: string;
-  subRole?: string;
-  tags?: string[];
-  search?: string;
-  /** Include jobs from suspended employers (admin views). */
-  includeSuspended?: boolean;
-}
+/** What a recruiter submits; status and expiry are managed separately. */
+export type JobInput = Omit<
+  JobPosting,
+  "id" | "createdAt" | "updatedAt" | "recruiterId" | "status" | "expiresAt"
+>;
 
-export type JobInput = Omit<JobPosting, "id" | "createdAt" | "updatedAt" | "recruiterId">;
+export type JobAction = "close" | "reopen" | "renew";
+
+const JOB_TTL_MS = 30 * 24 * 60 * 60 * 1000; // listings expire after 30 days
+const newExpiry = () => new Date(Date.now() + JOB_TTL_MS).toISOString();
 type NewJob = JobInput & { recruiterId: string };
 
 /* ------------------------------------------------------------------ */
@@ -84,6 +84,16 @@ interface JobRow {
   contact_email: string | null;
   contact_phone: string | null;
   attachment_url: string | null;
+  work_mode: string;
+  job_type: string;
+  experience_min: number;
+  experience_max: number;
+  salary_min: number | string | null;
+  salary_max: number | string | null;
+  education: string;
+  openings: number;
+  status: JobStatus;
+  expires_at: string;
   created_at: string;
   updated_at: string | null;
 }
@@ -102,7 +112,7 @@ const RECRUITER_PUBLIC_COLUMNS =
   "id, name, email, company, role, status, last_login_at, created_at";
 const RECRUITER_COLUMNS = `${RECRUITER_PUBLIC_COLUMNS}, password_hash`;
 const JOB_COLUMNS =
-  "id, recruiter_id, title, company, location, job_profile, industry, sub_role, tags, description, criteria, contact_name, contact_email, contact_phone, attachment_url, created_at, updated_at";
+  "id, recruiter_id, title, company, location, job_profile, industry, sub_role, tags, description, criteria, contact_name, contact_email, contact_phone, attachment_url, work_mode, job_type, experience_min, experience_max, salary_min, salary_max, education, openings, status, expires_at, created_at, updated_at";
 
 const iso = (v: string | null | undefined) =>
   v ? new Date(v).toISOString() : undefined;
@@ -143,6 +153,17 @@ function toJob(row: JobRow): JobPosting {
       phone: row.contact_phone ?? undefined,
     },
     attachmentUrl: row.attachment_url ?? undefined,
+    workMode: row.work_mode,
+    jobType: row.job_type,
+    experienceMin: row.experience_min,
+    experienceMax: row.experience_max,
+    // numeric columns can arrive as strings
+    salaryMin: row.salary_min === null ? undefined : Number(row.salary_min),
+    salaryMax: row.salary_max === null ? undefined : Number(row.salary_max),
+    education: row.education,
+    openings: row.openings,
+    status: row.status,
+    expiresAt: new Date(row.expires_at).toISOString(),
     createdAt: new Date(row.created_at).toISOString(),
     updatedAt: iso(row.updated_at),
   };
@@ -163,6 +184,14 @@ function jobToRow(input: JobInput) {
     contact_email: input.contact.email ?? null,
     contact_phone: input.contact.phone ?? null,
     attachment_url: input.attachmentUrl ?? null,
+    work_mode: input.workMode,
+    job_type: input.jobType,
+    experience_min: input.experienceMin,
+    experience_max: input.experienceMax,
+    salary_min: input.salaryMin ?? null,
+    salary_max: input.salaryMax ?? null,
+    education: input.education,
+    openings: input.openings,
   };
 }
 
@@ -347,70 +376,139 @@ export async function resetPasswordWithToken(
 /* Jobs                                                                */
 /* ------------------------------------------------------------------ */
 
-export async function listJobs(q: JobQuery = {}): Promise<JobPosting[]> {
+/** Splits a keyword query into lower-cased words safe for LIKE patterns. */
+function searchWords(q: string): string[] {
+  return q
+    .toLowerCase()
+    .replace(/[%_\\]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+/** In-memory equivalent of the public search filters (dev store). */
+function matchesQuery(j: JobPosting, q: JobQuery, now: number): boolean {
+  const anyOf = (selected: string[], value: string) => !selected.length || selected.includes(value);
+  if (j.status !== "active" || new Date(j.expiresAt).getTime() <= now) return false;
+  if (mockRecruiter(j.recruiterId)?.status === "suspended") return false;
+  if (!anyOf(q.location, j.location) || !anyOf(q.industry, j.industry)) return false;
+  if (!anyOf(q.subRole, j.subRole) || !anyOf(q.jobProfile, j.jobProfile)) return false;
+  if (!anyOf(q.workMode, j.workMode) || !anyOf(q.jobType, j.jobType)) return false;
+  if (!anyOf(q.education, j.education)) return false;
+  if (q.tags.length && !q.tags.some((t) => j.tags.includes(t))) return false;
+  if (q.experience !== undefined && (j.experienceMin > q.experience || j.experienceMax < q.experience)) return false;
+  if (q.salary !== undefined && (j.salaryMax === undefined || j.salaryMax < q.salary)) return false;
+  if (q.postedWithin !== undefined && new Date(j.createdAt).getTime() < now - q.postedWithin * 86_400_000) return false;
+  if (q.hasPhone && !j.contact.phone) return false;
+  if (q.hasEmail && !j.contact.email) return false;
+  const words = searchWords(q.q);
+  if (words.length) {
+    const text = [j.title, j.company, j.location, j.industry, j.subRole, j.jobProfile, j.workMode, j.jobType, ...j.tags, j.description]
+      .join(" ")
+      .toLowerCase();
+    if (!words.every((w) => text.includes(w))) return false;
+  }
+  return true;
+}
+
+/**
+ * Public job search: live jobs only (active, not expired, employer active),
+ * every filter applied in the database, newest/salary/experience sorting,
+ * and "load more" paging (returns the first page × PAGE_SIZE results).
+ */
+export async function searchJobs(q: JobQuery): Promise<JobPage> {
+  const limit = q.page * PAGE_SIZE;
   const sb = db();
   if (sb) {
-    // Inner-join the owner so jobs from suspended employers can be hidden.
+    const now = new Date().toISOString();
     let query = sb
       .from("jobs")
-      .select(`${JOB_COLUMNS}, recruiters!inner(status)`)
+      .select(`${JOB_COLUMNS}, recruiters!inner(status)`, { count: "exact" })
+      .eq("status", "active")
+      .gt("expires_at", now)
+      .eq("recruiters.status", "active");
+
+    if (q.location.length) query = query.in("location", q.location);
+    if (q.industry.length) query = query.in("industry", q.industry);
+    if (q.subRole.length) query = query.in("sub_role", q.subRole);
+    if (q.tags.length) query = query.overlaps("tags", q.tags);
+    if (q.jobProfile.length) query = query.in("job_profile", q.jobProfile);
+    if (q.workMode.length) query = query.in("work_mode", q.workMode);
+    if (q.jobType.length) query = query.in("job_type", q.jobType);
+    if (q.education.length) query = query.in("education", q.education);
+    if (q.experience !== undefined) {
+      query = query.lte("experience_min", q.experience).gte("experience_max", q.experience);
+    }
+    if (q.salary !== undefined) query = query.gte("salary_max", q.salary);
+    if (q.postedWithin !== undefined) {
+      query = query.gte("created_at", new Date(Date.now() - q.postedWithin * 86_400_000).toISOString());
+    }
+    if (q.hasPhone) query = query.not("contact_phone", "is", null);
+    if (q.hasEmail) query = query.not("contact_email", "is", null);
+    for (const word of searchWords(q.q)) query = query.ilike("search_text", `%${word}%`);
+
+    if (q.sort === "salary") {
+      query = query.order("salary_max", { ascending: false, nullsFirst: false });
+    } else if (q.sort === "experience") {
+      query = query.order("experience_min", { ascending: true });
+    }
+    query = query.order("created_at", { ascending: false }).range(0, limit - 1);
+
+    const { data, error, count } = await query.returns<JobRow[]>();
+    if (error) throw error;
+    const total = count ?? data.length;
+    return { jobs: data.map(toJob), total, page: q.page, pageSize: PAGE_SIZE, hasMore: total > limit };
+  }
+
+  const now = Date.now();
+  const matched = mockStore.jobs.filter((j) => matchesQuery(j, q, now));
+  matched.sort((a, b) => {
+    if (q.sort === "salary") {
+      const d = (b.salaryMax ?? -1) - (a.salaryMax ?? -1);
+      if (d) return d;
+    } else if (q.sort === "experience") {
+      const d = a.experienceMin - b.experienceMin;
+      if (d) return d;
+    }
+    return b.createdAt.localeCompare(a.createdAt);
+  });
+  return {
+    jobs: matched.slice(0, limit),
+    total: matched.length,
+    page: q.page,
+    pageSize: PAGE_SIZE,
+    hasMore: matched.length > limit,
+  };
+}
+
+/**
+ * Every job (any status), newest first — for the recruiter dashboard
+ * (pass recruiterId), the admin panel and the Excel export.
+ */
+export async function listJobs(opts: { recruiterId?: string } = {}): Promise<JobPosting[]> {
+  const sb = db();
+  if (sb) {
+    let query = sb
+      .from("jobs")
+      .select(JOB_COLUMNS)
       .order("created_at", { ascending: false })
-      .limit(1000);
-
-    if (!q.includeSuspended) query = query.eq("recruiters.status", "active");
-    if (q.recruiterId) {
-      if (!isUuid(q.recruiterId)) return [];
-      query = query.eq("recruiter_id", q.recruiterId);
+      .limit(5000);
+    if (opts.recruiterId) {
+      if (!isUuid(opts.recruiterId)) return [];
+      query = query.eq("recruiter_id", opts.recruiterId);
     }
-    if (q.location) query = query.eq("location", q.location);
-    if (q.jobProfile) query = query.eq("job_profile", q.jobProfile);
-    if (q.industry) query = query.eq("industry", q.industry);
-    if (q.subRole) query = query.eq("sub_role", q.subRole);
-    if (q.tags?.length) query = query.overlaps("tags", q.tags);
-    if (q.search) {
-      // Strip characters that have meaning in PostgREST filter syntax.
-      const term = q.search.replace(/[,()*%\\:"]/g, " ").trim();
-      if (term) {
-        query = query.or(
-          ["title", "company", "location", "industry", "sub_role", "description"]
-            .map((col) => `${col}.ilike.*${term}*`)
-            .join(",")
-        );
-      }
-    }
-
     const { data, error } = await query.returns<JobRow[]>();
     if (error) throw error;
     return data.map(toJob);
   }
+  return [...mockStore.jobs]
+    .filter((j) => !opts.recruiterId || j.recruiterId === opts.recruiterId)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
 
-  let results = [...mockStore.jobs].sort((a, b) =>
-    b.createdAt.localeCompare(a.createdAt)
-  );
-  if (!q.includeSuspended) {
-    results = results.filter((j) => mockRecruiter(j.recruiterId)?.status !== "suspended");
-  }
-  if (q.recruiterId)
-    results = results.filter((j) => j.recruiterId === q.recruiterId);
-  if (q.location) results = results.filter((j) => j.location === q.location);
-  if (q.jobProfile)
-    results = results.filter((j) => j.jobProfile === q.jobProfile);
-  if (q.industry) results = results.filter((j) => j.industry === q.industry);
-  if (q.subRole) results = results.filter((j) => j.subRole === q.subRole);
-  if (q.tags?.length) {
-    const tags = q.tags;
-    results = results.filter((j) => tags.some((t) => j.tags.includes(t)));
-  }
-  if (q.search) {
-    const s = q.search.toLowerCase();
-    results = results.filter((j) =>
-      [j.title, j.company, j.location, j.industry, j.subRole, j.description, ...j.tags]
-        .join(" ")
-        .toLowerCase()
-        .includes(s)
-    );
-  }
-  return results;
+/** True if the job is visible on the public board right now. */
+export function isJobLive(job: JobPosting, now = Date.now()): boolean {
+  return job.status === "active" && new Date(job.expiresAt).getTime() > now;
 }
 
 export async function getJobById(id: string): Promise<JobPosting | null> {
@@ -433,7 +531,7 @@ export async function createJob(input: NewJob): Promise<JobPosting> {
   if (sb) {
     const { data, error } = await sb
       .from("jobs")
-      .insert({ ...jobToRow(input), recruiter_id: input.recruiterId })
+      .insert({ ...jobToRow(input), recruiter_id: input.recruiterId, expires_at: newExpiry() })
       .select(JOB_COLUMNS)
       .single<JobRow>();
     if (error) throw error;
@@ -443,6 +541,8 @@ export async function createJob(input: NewJob): Promise<JobPosting> {
   const job: JobPosting = {
     ...input,
     id: `job-${randomUUID().slice(0, 8)}`,
+    status: "active",
+    expiresAt: newExpiry(),
     createdAt: now,
     updatedAt: now,
   };
@@ -476,6 +576,41 @@ export async function updateJob(
   );
   if (!job) return null;
   Object.assign(job, input, { updatedAt: new Date().toISOString() });
+  return job;
+}
+
+/**
+ * Close, reopen or renew a job (renew/reopen also extend it 30 days).
+ * Pass the owner's id to restrict to their own job, or null for admins.
+ */
+export async function setJobStatus(
+  id: string,
+  action: JobAction,
+  ownerId: string | null
+): Promise<JobPosting | null> {
+  const patch =
+    action === "close"
+      ? { status: "closed" as const }
+      : { status: "active" as const, expiresAt: newExpiry() };
+  const sb = db();
+  if (sb) {
+    if (!isUuid(id)) return null;
+    let query = sb
+      .from("jobs")
+      .update({
+        status: patch.status,
+        ...("expiresAt" in patch ? { expires_at: patch.expiresAt } : {}),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id);
+    if (ownerId) query = query.eq("recruiter_id", ownerId);
+    const { data, error } = await query.select(JOB_COLUMNS).maybeSingle<JobRow>();
+    if (error) throw error;
+    return data ? toJob(data) : null;
+  }
+  const job = mockStore.jobs.find((j) => j.id === id && (!ownerId || j.recruiterId === ownerId));
+  if (!job) return null;
+  Object.assign(job, patch, { updatedAt: new Date().toISOString() });
   return job;
 }
 

@@ -12,12 +12,31 @@ import { Textarea } from "@/components/ui/Textarea";
 import { Card } from "@/components/ui/Card";
 import { useFetch } from "@/hooks/useFetch";
 import {
+  educationLevels,
   getNicheTags,
   getSubRoles,
   industries,
   jobProfiles,
+  jobTypes,
   locations,
+  MAX_EXPERIENCE_YEARS,
+  workModes,
 } from "@/lib/data/filterHierarchy";
+
+const experienceOptions = Array.from({ length: MAX_EXPERIENCE_YEARS + 1 }, (_, i) => String(i));
+const experienceLabels: Record<string, string> = Object.fromEntries(
+  experienceOptions.map((y) => [y, y === "0" ? "0 (Fresher)" : `${y} year${y === "1" ? "" : "s"}`])
+);
+
+const createDefaults: Partial<JobPostFormData> = {
+  tags: [],
+  workMode: "Office",
+  jobType: "Full-time",
+  education: "Any",
+  experienceMin: "0",
+  experienceMax: String(MAX_EXPERIENCE_YEARS),
+  openings: "1",
+};
 import { jobPostSchema, type JobPostFormData } from "@/lib/validations";
 import { cn } from "@/lib/utils";
 
@@ -25,7 +44,7 @@ interface JobPostFormProps {
   uploadsEnabled?: boolean;
   /** Edit mode: the job being edited and its current values. */
   jobId?: string;
-  initialValues?: JobPostFormData;
+  initialValues?: Partial<JobPostFormData>;
   /** Where to go after saving (defaults to the dashboard). */
   redirectTo?: string;
 }
@@ -57,7 +76,7 @@ export function JobPostForm({
     formState: { errors },
   } = useForm<JobPostFormData>({
     resolver: zodResolver(jobPostSchema),
-    defaultValues: initialValues ?? { tags: [] },
+    defaultValues: initialValues ?? createDefaults,
   });
 
   const industry = watch("industry");
@@ -148,19 +167,8 @@ export function JobPostForm({
           />
         </div>
 
+        <SectionTitle>Role</SectionTitle>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-          <SelectField
-            label="Location"
-            error={errors.location?.message}
-            options={locations}
-            {...register("location")}
-          />
-          <SelectField
-            label="Job Profile"
-            error={errors.jobProfile?.message}
-            options={jobProfiles}
-            {...register("jobProfile")}
-          />
           <SelectField
             label="Industry"
             error={errors.industry?.message}
@@ -172,27 +180,35 @@ export function JobPostForm({
               },
             })}
           />
-        </div>
-
-        {subRoles.length > 0 && (
           <SelectField
-            label="Sub-role"
+            label="Role / Department"
             error={errors.subRole?.message}
             options={subRoles}
+            disabled={subRoles.length === 0}
+            placeholder={subRoles.length ? undefined : "Select industry first"}
             {...register("subRole", {
               onChange: () => setSelectedTags([]),
             })}
           />
-        )}
+          <SelectField
+            label="Seniority"
+            error={errors.jobProfile?.message}
+            options={jobProfiles}
+            {...register("jobProfile")}
+          />
+        </div>
 
         {nicheTags.length > 0 && (
           <div className="space-y-2">
-            <label className="block text-sm font-medium">Niche Tags</label>
+            <label className="block text-sm font-medium">
+              Skills <span className="font-normal text-muted-foreground">(pick all that apply)</span>
+            </label>
             <div className="flex flex-wrap gap-2">
               {nicheTags.map((tag) => (
                 <button
                   key={tag}
                   type="button"
+                  aria-pressed={selectedTags.includes(tag)}
                   onClick={() => toggleTag(tag)}
                   className={cn(
                     "px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors",
@@ -210,6 +226,83 @@ export function JobPostForm({
             )}
           </div>
         )}
+
+        <SectionTitle>Location & type</SectionTitle>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-5">
+          <div className="col-span-2 sm:col-span-1">
+            <SelectField
+              label="Location"
+              error={errors.location?.message}
+              options={locations}
+              {...register("location")}
+            />
+          </div>
+          <SelectField
+            label="Work mode"
+            error={errors.workMode?.message}
+            options={workModes}
+            {...register("workMode")}
+          />
+          <SelectField
+            label="Job type"
+            error={errors.jobType?.message}
+            options={jobTypes}
+            {...register("jobType")}
+          />
+          <Input
+            {...register("openings")}
+            type="number"
+            min={1}
+            inputMode="numeric"
+            label="Openings"
+            error={errors.openings?.message}
+          />
+        </div>
+
+        <SectionTitle>Experience, salary & education</SectionTitle>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-5">
+          <SelectField
+            label="Min experience"
+            error={errors.experienceMin?.message}
+            options={experienceOptions}
+            labels={experienceLabels}
+            {...register("experienceMin")}
+          />
+          <SelectField
+            label="Max experience"
+            error={errors.experienceMax?.message}
+            options={experienceOptions}
+            labels={{ ...experienceLabels, "30": "30+ (no limit)" }}
+            {...register("experienceMax")}
+          />
+          <Input
+            {...register("salaryMin")}
+            inputMode="decimal"
+            label="Min salary (LPA)"
+            placeholder="e.g. 4"
+            error={errors.salaryMin?.message}
+          />
+          <Input
+            {...register("salaryMax")}
+            inputMode="decimal"
+            label="Max salary (LPA)"
+            placeholder="e.g. 6.5"
+            error={errors.salaryMax?.message}
+          />
+        </div>
+        <p className="-mt-3 text-xs text-muted-foreground">
+          Salary in lakhs per annum. Leave blank to show &ldquo;Not disclosed&rdquo; — jobs with a salary get more responses.
+        </p>
+        <div className="sm:w-1/2">
+          <SelectField
+            label="Minimum education"
+            error={errors.education?.message}
+            options={educationLevels}
+            {...register("education")}
+          />
+        </div>
+
+        <SectionTitle>Description</SectionTitle>
 
         <Textarea
           {...register("description")}
@@ -328,31 +421,48 @@ function SelectField({
   label,
   error,
   options,
+  labels,
+  placeholder,
   ...props
 }: {
   label: string;
   error?: string;
   options: readonly string[];
+  /** Display text per option value. */
+  labels?: Record<string, string>;
+  placeholder?: string;
 } & React.SelectHTMLAttributes<HTMLSelectElement>) {
+  const id = props.id ?? props.name;
   return (
     <div className="space-y-1.5">
-      <label className="block text-sm font-medium">{label}</label>
+      <label htmlFor={id} className="block text-sm font-medium">
+        {label}
+      </label>
       <select
         {...props}
+        id={id}
         className={cn(
-          "w-full rounded-xl border bg-surface px-4 py-3 text-sm transition-colors",
+          "w-full rounded-xl border bg-surface px-4 py-3 text-sm transition-colors disabled:opacity-60",
           "focus:outline-none focus:ring-2 focus:ring-saffron/50 focus:border-saffron",
           error ? "border-red-500" : "border-border hover:border-saffron/40"
         )}
       >
-        <option value="">Select {label}</option>
+        <option value="">{placeholder ?? `Select ${label.toLowerCase()}`}</option>
         {options.map((opt) => (
           <option key={opt} value={opt}>
-            {opt}
+            {labels?.[opt] ?? opt}
           </option>
         ))}
       </select>
       {error && <p className="text-xs text-red-500">{error}</p>}
     </div>
+  );
+}
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <h3 className="border-t border-border pt-5 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+      {children}
+    </h3>
   );
 }

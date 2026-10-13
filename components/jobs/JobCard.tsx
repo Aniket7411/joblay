@@ -1,185 +1,77 @@
-"use client";
-
-import { useState } from "react";
-import { motion } from "framer-motion";
-import { Check, Copy, Mail, Paperclip, Phone } from "lucide-react";
+import Link from "next/link";
+import { Briefcase, Clock, IndianRupee, MapPin, Paperclip, Users } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { ContactActions } from "@/components/jobs/ContactActions";
+import { formatExperience, formatSalary, postedAgo } from "@/lib/jobQuery";
 import type { JobPosting } from "@/types";
 
-interface JobCardProps {
-  job: JobPosting;
-  index?: number;
-}
-
-export function JobCard({ job, index = 0 }: JobCardProps) {
-  const [revealed, setRevealed] = useState<"phone" | "email" | null>(null);
-  const [copied, setCopied] = useState(false);
-
-  const hasPhone = Boolean(job.contact.phone?.trim());
-  const hasEmail = Boolean(job.contact.email?.trim());
-
-  const handleCopyEmail = async () => {
-    if (!job.contact.email) return;
-    await navigator.clipboard.writeText(job.contact.email);
-    setCopied(true);
-    setRevealed("email");
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const whatsappLink = job.contact.phone
-    ? `https://wa.me/${job.contact.phone.replace(/\D/g, "")}`
-    : null;
-
+export function JobCard({ job, now }: { job: JobPosting; now: number }) {
   return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.96 }}
-      transition={{ duration: 0.3, delay: index * 0.04 }}
-    >
-      <Card hover className="h-full flex flex-col p-6">
-        <div className="flex items-start justify-between gap-3 mb-3">
-          <div>
-            <h3 className="font-semibold text-lg leading-tight">{job.title}</h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              {job.company} · {job.location}
-            </p>
-          </div>
-          <Badge variant="saffron">{job.jobProfile}</Badge>
+    <Card hover className="h-full flex flex-col p-5 sm:p-6">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="font-semibold text-lg leading-snug">
+            <Link href={`/jobs/${job.id}`} className="hover:text-saffron-dark dark:hover:text-saffron">
+              {job.title}
+            </Link>
+          </h3>
+          <p className="text-sm text-muted-foreground mt-0.5">{job.company}</p>
         </div>
+        <span className="shrink-0 text-xs text-muted-foreground flex items-center gap-1">
+          <Clock className="h-3 w-3" />
+          {postedAgo(job.createdAt, now)}
+        </span>
+      </div>
 
-        <div className="flex flex-wrap gap-1.5 mb-4">
-          <Badge variant="green">{job.industry}</Badge>
-          <Badge variant="outline">{job.subRole}</Badge>
-          {job.tags.map((tag) => (
-            <Badge key={tag} variant="outline">
-              {tag}
-            </Badge>
-          ))}
-        </div>
+      <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-sm text-muted-foreground">
+        <li className="flex items-center gap-1.5">
+          <Briefcase className="h-3.5 w-3.5" />
+          {formatExperience(job.experienceMin, job.experienceMax)}
+        </li>
+        <li className="flex items-center gap-1.5">
+          <IndianRupee className="h-3.5 w-3.5" />
+          {formatSalary(job.salaryMin, job.salaryMax)}
+        </li>
+        <li className="flex items-center gap-1.5">
+          <MapPin className="h-3.5 w-3.5" />
+          {job.location}
+        </li>
+        {job.openings > 1 && (
+          <li className="flex items-center gap-1.5">
+            <Users className="h-3.5 w-3.5" />
+            {job.openings} openings
+          </li>
+        )}
+      </ul>
 
-        <p className="text-sm text-muted-foreground line-clamp-3 flex-1 mb-4">
-          {job.description}
-        </p>
+      <div className="flex flex-wrap gap-1.5 mt-3">
+        <Badge variant="saffron">{job.workMode}</Badge>
+        <Badge variant="green">{job.jobType}</Badge>
+        <Badge variant="outline">{job.jobProfile}</Badge>
+        {job.tags.slice(0, 4).map((tag) => (
+          <Badge key={tag} variant="outline">
+            {tag}
+          </Badge>
+        ))}
+        {job.tags.length > 4 && <Badge variant="outline">+{job.tags.length - 4}</Badge>}
+      </div>
 
-        <ul className="text-xs text-muted-foreground space-y-1 mb-5 border-t border-border pt-4">
-          {job.criteria.slice(0, 3).map((c) => (
-            <li key={c} className="flex items-start gap-2">
-              <span className="text-saffron mt-0.5">•</span>
-              {c}
-            </li>
-          ))}
-        </ul>
+      <p className="text-sm text-muted-foreground line-clamp-2 mt-3 flex-1">{job.description}</p>
 
+      <div className="flex items-center justify-between gap-3 mt-3 mb-4 text-xs">
+        <Link href={`/jobs/${job.id}`} className="font-medium text-saffron-dark dark:text-saffron hover:underline">
+          View details →
+        </Link>
         {job.attachmentUrl && (
-          <a
-            href={job.attachmentUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-saffron hover:underline mb-3"
-          >
-            <Paperclip className="h-3.5 w-3.5" />
-            View full JD
-          </a>
+          <span className="flex items-center gap-1 text-muted-foreground">
+            <Paperclip className="h-3 w-3" />
+            JD attached
+          </span>
         )}
+      </div>
 
-        {job.contact.name && (
-          <p className="text-xs text-muted-foreground mb-3">
-            Contact: <span className="font-medium text-foreground">{job.contact.name}</span>
-          </p>
-        )}
-
-        <div className="flex flex-col sm:flex-row gap-2 mt-auto">
-          {hasPhone && (
-            <div className="flex-1">
-              {revealed === "phone" ? (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  className="rounded-xl border border-border bg-muted/50 p-3 text-sm"
-                >
-                  <p className="font-mono font-medium">{job.contact.phone}</p>
-                  <div className="flex gap-2 mt-2">
-                    <a href={`tel:${job.contact.phone}`}>
-                      <Button size="sm" variant="secondary" className="w-full">
-                        <Phone className="h-3.5 w-3.5" />
-                        Call
-                      </Button>
-                    </a>
-                    {whatsappLink && (
-                      <a href={whatsappLink} target="_blank" rel="noopener noreferrer">
-                        <Button size="sm" variant="outline" className="w-full">
-                          WhatsApp
-                        </Button>
-                      </a>
-                    )}
-                  </div>
-                </motion.div>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="w-full"
-                  onClick={() => setRevealed("phone")}
-                >
-                  <Phone className="h-3.5 w-3.5" />
-                  Number
-                </Button>
-              )}
-            </div>
-          )}
-
-          {hasEmail && (
-            <div className="flex-1">
-              {revealed === "email" ? (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  className="rounded-xl border border-border bg-muted/50 p-3 text-sm"
-                >
-                  <p className="font-mono font-medium break-all">{job.contact.email}</p>
-                  <div className="flex gap-2 mt-2">
-                    <a href={`mailto:${job.contact.email}`}>
-                      <Button size="sm" className="w-full">
-                        <Mail className="h-3.5 w-3.5" />
-                        Email
-                      </Button>
-                    </a>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={handleCopyEmail}
-                      className="w-full"
-                    >
-                      {copied ? (
-                        <Check className="h-3.5 w-3.5" />
-                      ) : (
-                        <Copy className="h-3.5 w-3.5" />
-                      )}
-                      {copied ? "Copied" : "Copy"}
-                    </Button>
-                  </div>
-                </motion.div>
-              ) : (
-                <Button
-                  size="sm"
-                  className="w-full"
-                  onClick={() => {
-                    setRevealed("email");
-                    handleCopyEmail();
-                  }}
-                >
-                  <Mail className="h-3.5 w-3.5" />
-                  Email
-                </Button>
-              )}
-            </div>
-          )}
-        </div>
-      </Card>
-    </motion.div>
+      <ContactActions contact={job.contact} jobTitle={job.title} />
+    </Card>
   );
 }

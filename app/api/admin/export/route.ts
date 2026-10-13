@@ -30,7 +30,7 @@ function addSheet<T>(
 
   // Show Date cells as dates.
   columns.forEach((c, i) => {
-    if (/date|joined|login|posted|updated|received/i.test(c.header)) {
+    if (/date|joined|login|posted|updated|received|expires/i.test(c.header)) {
       ws.getColumn(i + 1).numFmt = "dd-mmm-yyyy hh:mm";
     }
   });
@@ -49,7 +49,7 @@ export async function GET() {
     if (!admin) return fail("Admins only", 403);
 
     const [jobs, recruiters, messages] = await Promise.all([
-      listJobs({ includeSuspended: true }),
+      listJobs(),
       listRecruiters(),
       listContactMessages(),
     ]);
@@ -82,6 +82,8 @@ export async function GET() {
     ]);
     section("Jobs by industry", countBy(jobs, (j) => j.industry));
     section("Jobs by location", countBy(jobs, (j) => j.location));
+    section("Jobs by work mode", countBy(jobs, (j) => j.workMode));
+    section("Jobs by job type", countBy(jobs, (j) => j.jobType));
     section("Jobs by profile", countBy(jobs, (j) => j.jobProfile));
 
     addSheet(
@@ -95,7 +97,17 @@ export async function GET() {
         { header: "Profile", width: 12, value: (j) => j.jobProfile },
         { header: "Industry", width: 14, value: (j) => j.industry },
         { header: "Sub-role", width: 14, value: (j) => j.subRole },
-        { header: "Tags", width: 30, value: (j) => j.tags.join(", ") },
+        { header: "Skills", width: 30, value: (j) => j.tags.join(", ") },
+        { header: "Work mode", width: 11, value: (j) => j.workMode },
+        { header: "Job type", width: 12, value: (j) => j.jobType },
+        { header: "Exp min (yrs)", width: 12, value: (j) => j.experienceMin },
+        { header: "Exp max (yrs)", width: 12, value: (j) => j.experienceMax },
+        { header: "Salary min (LPA)", width: 14, value: (j) => j.salaryMin ?? "" },
+        { header: "Salary max (LPA)", width: 14, value: (j) => j.salaryMax ?? "" },
+        { header: "Education", width: 14, value: (j) => j.education },
+        { header: "Openings", width: 10, value: (j) => j.openings },
+        { header: "Status", width: 10, value: (j) => (j.status === "closed" ? "closed" : new Date(j.expiresAt) <= new Date() ? "expired" : "live") },
+        { header: "Expires", width: 18, value: (j) => dateOrBlank(j.expiresAt) },
         { header: "Description", width: 60, value: (j) => j.description },
         { header: "Criteria", width: 50, value: (j) => j.criteria.join("\n") },
         { header: "Contact name", width: 20, value: (j) => j.contact.name ?? "" },

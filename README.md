@@ -53,17 +53,42 @@ Suspended employers can't sign in and their jobs are hidden from the public boar
 
 ## API
 
+### Job search — `GET /api/jobs` (public)
+
+All parameters are optional. Multi-value filters take comma-separated values; unknown values are ignored.
+
+| Param | Example | Meaning |
+|---|---|---|
+| `q` | `react native` | Keywords — every word must match title, company, skills, location or description |
+| `location` | `Pune,Mumbai` | City (see `lib/data/filterHierarchy.ts`) |
+| `industry` / `subRole` / `tags` | `IT` / `Developer` / `Java Developer,React Developer` | Industry → role → skills |
+| `jobProfile` | `Fresher,Junior` | Seniority |
+| `workMode` | `Remote,Hybrid` | Office / Remote / Hybrid |
+| `jobType` | `Full-time,Internship` | Full-time, Part-time, Contract, Internship, Freelance, Temporary |
+| `education` | `Graduate` | Minimum education |
+| `experience` | `3` | Candidate's years — jobs whose range includes it |
+| `salary` | `6` | Minimum salary in LPA |
+| `postedWithin` | `7` | Days: 1, 3, 7, 15, 30 |
+| `hasPhone` / `hasEmail` | `1` | Only jobs with that contact method |
+| `sort` | `salary` | `newest` (default), `salary`, `experience` |
+| `page` | `2` | Returns the first `page × 20` results |
+
+Response: `{ success, data: { jobs, total, page, pageSize, hasMore } }`. The same parameters work on the home page URL, e.g. `/?workMode=Remote&tags=AWS`.
+
+### Other endpoints
+
 | Endpoint | Method | Auth | Purpose |
 |---|---|---|---|
-| `/api/jobs` | GET | — | List jobs. Query: `location, jobProfile, industry, subRole, tags (csv), search`; `mine=1` for the signed-in recruiter's jobs |
-| `/api/jobs` | POST | ✔ | Create a job (contact needs at least one of name/email/phone) |
-| `/api/jobs/[id]` | DELETE | ✔ | Delete one of your own jobs |
-| `/api/uploads` | POST | ✔ | Upload a JD attachment to Supabase (multipart `file`) |
-| `/api/auth/register` | POST | — | Create account + sign in |
-| `/api/auth/login` | POST | — | Sign in |
-| `/api/auth/logout` | POST | — | Sign out |
-| `/api/auth/forgot-password` | POST | — | Email a reset link (valid 1 hour, single use) |
-| `/api/auth/reset-password` | POST | — | Set a new password with the token |
+| `/api/jobs` | POST | recruiter | Create a job (numbers may be sent as numbers or strings) |
+| `/api/jobs/[id]` | PATCH / DELETE | owner or admin / owner | Edit / delete a job |
+| `/api/jobs/[id]/status` | POST | owner or admin | `{ "action": "close" \| "reopen" \| "renew" }` — reopen/renew extend 30 days |
+| `/api/uploads` | POST | recruiter | Upload a JD attachment to Supabase (multipart `file`) |
+| `/api/contact` | POST | — | Contact form / job report |
+| `/api/auth/register` · `login` · `logout` | POST | — | Recruiter account |
+| `/api/auth/forgot-password` · `reset-password` | POST | — | Reset link (1 hour, single use) |
+| `/api/admin/...` | various | admin | Employers, messages, job moderation, Excel export |
+
+Jobs expire 30 days after posting (recruiters can renew). Each job has a public page at `/jobs/[id]` with Google for Jobs structured data; `/sitemap.xml` lists all live jobs.
 
 ## Code map
 

@@ -19,7 +19,13 @@ import { cn } from "@/lib/utils";
 
 type Topic = ContactFormData["topic"];
 
-export function ContactForm({ initialTopic }: { initialTopic: Topic }) {
+export function ContactForm({
+  initialTopic,
+  initialMessage = "",
+}: {
+  initialTopic: Topic;
+  initialMessage?: string;
+}) {
   const [sent, setSent] = useState(false);
   const { execute, loading, error } = useFetch();
 
@@ -30,7 +36,7 @@ export function ContactForm({ initialTopic }: { initialTopic: Topic }) {
     formState: { errors },
   } = useForm<ContactFormData>({
     resolver: zodResolver(contactSchema),
-    defaultValues: { topic: initialTopic },
+    defaultValues: { topic: initialTopic, message: initialMessage },
   });
 
   const topic = watch("topic");

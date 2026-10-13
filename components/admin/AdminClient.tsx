@@ -31,6 +31,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { industries, locations } from "@/lib/data/filterHierarchy";
 import { cn } from "@/lib/utils";
+import { formatExperience, formatSalary } from "@/lib/jobQuery";
 import { contactTopics } from "@/lib/validations";
 import type {
   AdminOverview,
@@ -476,10 +477,11 @@ function JobsTab({
                     <h3 className="font-semibold flex items-center gap-2">
                       {job.title}
                       {owner?.status === "suspended" && <Badge variant="outline">Employer suspended</Badge>}
+                      {job.status === "closed" && <Badge variant="outline">Closed</Badge>}
                       <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", open && "rotate-180")} />
                     </h3>
                     <p className="text-sm text-muted-foreground mt-1">
-                      {job.company} · {job.location} · {job.jobProfile} · posted {fmtDate(job.createdAt)}
+                      {job.company} · {job.location} · {job.workMode} · {formatExperience(job.experienceMin, job.experienceMax)} · {formatSalary(job.salaryMin, job.salaryMax)} · posted {fmtDate(job.createdAt)}
                     </p>
                     <p className="text-xs text-muted-foreground mt-1 truncate">
                       Employer: {owner ? `${owner.name} (${owner.email})` : "unknown"}
@@ -563,6 +565,11 @@ function JobDetails({ job, owner }: { job: JobPosting; owner?: RecruiterSummary 
             </a>
           )}
         />
+        <Detail label="Experience" value={formatExperience(job.experienceMin, job.experienceMax)} />
+        <Detail label="Salary" value={formatSalary(job.salaryMin, job.salaryMax)} />
+        <Detail label="Work mode · type" value={`${job.workMode} · ${job.jobType}`} />
+        <Detail label="Education · openings" value={`${job.education} · ${job.openings}`} />
+        <Detail label="Status" value={`${job.status === "closed" ? "Closed" : "Active"} · expires ${fmtDate(job.expiresAt)}`} />
         <Detail label="Employer" value={owner ? `${owner.name} · ${owner.email}` : undefined} />
         <Detail label="Posted" value={fmtDateTime(job.createdAt)} />
         <Detail label="Last updated" value={fmtDateTime(job.updatedAt ?? job.createdAt)} />

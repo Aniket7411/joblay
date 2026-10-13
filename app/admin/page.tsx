@@ -14,7 +14,7 @@ export default async function AdminPage() {
   // Don't reveal the admin area exists to non-admins.
   if (user.role !== "admin") notFound();
   const [jobs, recruiters, messages] = await Promise.all([
-    listJobs({ includeSuspended: true }),
+    listJobs(),
     listRecruiters(),
     listContactMessages(),
   ]);

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { MessageSquare } from "lucide-react";
 import { ContactForm } from "@/components/forms/ContactForm";
+import { getJobById } from "@/lib/repository";
 import { contactTopics, type ContactFormData } from "@/lib/validations";
 
 export const metadata = {
@@ -11,9 +12,17 @@ export const metadata = {
 export default async function ContactPage({
   searchParams,
 }: {
-  searchParams: Promise<{ topic?: string }>;
+  searchParams: Promise<{ topic?: string; job?: string }>;
 }) {
-  const { topic } = await searchParams;
+  const { topic, job: jobId } = await searchParams;
+  // "Report this job" links pass the job id; pre-fill which job it's about.
+  const job = jobId ? await getJobById(jobId).catch(() => null) : null;
+  const initialMessage = job
+    ? `Reporting job: ${job.title} at ${job.company} (${job.location})
+Job ID: ${job.id}
+
+What's wrong: `
+    : "";
   const initialTopic = (
     contactTopics.some((t) => t.value === topic) ? topic : "general"
   ) as ContactFormData["topic"];
@@ -41,7 +50,7 @@ export default async function ContactPage({
         </p>
       </header>
 
-      <ContactForm key={initialTopic} initialTopic={initialTopic} />
+      <ContactForm key={`${initialTopic}-${job?.id ?? ""}`} initialTopic={initialTopic} initialMessage={initialMessage} />
     </div>
   );
 }

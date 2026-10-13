@@ -18,9 +18,22 @@ export interface JobPosting {
   criteria: string[];
   contact: RecruiterContact;
   attachmentUrl?: string;
+  workMode: string;
+  jobType: string;
+  experienceMin: number;
+  experienceMax: number;
+  /** Lakhs per annum; both undefined when not disclosed. */
+  salaryMin?: number;
+  salaryMax?: number;
+  education: string;
+  openings: number;
+  status: JobStatus;
+  expiresAt: string;
   createdAt: string;
   updatedAt?: string;
 }
+
+export type JobStatus = "active" | "closed";
 
 export type UserRole = "recruiter" | "admin";
 export type AccountStatus = "active" | "suspended";
@@ -61,13 +74,12 @@ export interface ResetPasswordPayload {
   confirmPassword: string;
 }
 
-export interface JobFilters {
-  location: string;
-  jobProfile: string;
-  industry: string;
-  subRole: string;
-  tags: string[];
-  search: string;
+export interface JobPage {
+  jobs: JobPosting[];
+  total: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
 }
 
 export interface ApiResponse<T = unknown> {
