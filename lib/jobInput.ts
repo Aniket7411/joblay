@@ -8,6 +8,7 @@ import {
   locations,
 } from "@/lib/data/filterHierarchy";
 import type { JobInput } from "@/lib/repository";
+import { normalizePhone } from "@/lib/phone";
 import { isOwnAttachmentUrl } from "@/lib/supabase";
 import { jobPostSchema, type JobPostFormData } from "@/lib/validations";
 
@@ -48,6 +49,21 @@ export function parseJobBody(body: unknown): JobInput | NextResponse {
     return fail("Invalid attachment", 400);
   }
 
+  let phone: string | undefined;
+  if (data.contactPhone?.trim()) {
+    phone = normalizePhone(data.contactPhone) ?? undefined;
+    if (!phone) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Validation failed",
+          errors: { contactPhone: ["Enter a valid mobile number, e.g. 98765 43210"] },
+        },
+        { status: 400 }
+      );
+    }
+  }
+
   const salaryMin = data.salaryMin ? Number(data.salaryMin) : undefined;
   return {
     title: data.title.trim(),
@@ -65,7 +81,7 @@ export function parseJobBody(body: unknown): JobInput | NextResponse {
     contact: {
       name: data.contactName?.trim() || undefined,
       email: data.contactEmail?.trim() || undefined,
-      phone: data.contactPhone?.trim() || undefined,
+      phone,
     },
     attachmentUrl: data.attachmentUrl || undefined,
     workMode: data.workMode,

@@ -1,4 +1,5 @@
 import { fail, ok, serverError, validationFailed } from "@/lib/api";
+import { TURNSTILE_FAILED, verifyTurnstile } from "@/lib/turnstile";
 import { isMailConfigured, sendContactEmail } from "@/lib/mail";
 import { createContactMessage } from "@/lib/repository";
 import { contactSchema, contactTopics } from "@/lib/validations";
@@ -18,7 +19,11 @@ function rateLimited(ip: string): boolean {
 
 export async function POST(request: Request) {
   try {
-    const parsed = contactSchema.safeParse(await request.json());
+    const body = await request.json();
+    if (!(await verifyTurnstile(body?.turnstileToken, request))) {
+      return fail(TURNSTILE_FAILED, 400);
+    }
+    const parsed = contactSchema.safeParse(body);
     if (!parsed.success) return validationFailed(parsed.error);
     const data = parsed.data;
 

@@ -1,4 +1,5 @@
 import { fail, ok, serverError, validationFailed } from "@/lib/api";
+import { TURNSTILE_FAILED, verifyTurnstile } from "@/lib/turnstile";
 import { verifyPassword } from "@/lib/auth/password";
 import { setSessionCookie } from "@/lib/auth/session";
 import { findRecruiterByEmail, publicRecruiter, recordLogin } from "@/lib/repository";
@@ -6,7 +7,11 @@ import { loginSchema } from "@/lib/validations";
 
 export async function POST(request: Request) {
   try {
-    const parsed = loginSchema.safeParse(await request.json());
+    const body = await request.json();
+    if (!(await verifyTurnstile(body?.turnstileToken, request))) {
+      return fail(TURNSTILE_FAILED, 400);
+    }
+    const parsed = loginSchema.safeParse(body);
     if (!parsed.success) return validationFailed(parsed.error);
 
     const recruiter = await findRecruiterByEmail(parsed.data.email);

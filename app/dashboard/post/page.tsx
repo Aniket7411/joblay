@@ -7,6 +7,7 @@ import { MAX_EXPERIENCE_YEARS } from "@/lib/data/filterHierarchy";
 import { jobToFormValues } from "@/lib/jobInput";
 import { getJobById, listJobs } from "@/lib/repository";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import { isAiEnabled } from "@/lib/ai/parseJd";
 import type { JobPostFormData } from "@/lib/validations";
 
 export const metadata = {
@@ -69,7 +70,11 @@ export default async function PostJobPage({
             : "Add a new job description. Candidates will contact you directly."}
         </p>
       </motion.div>
-      <JobPostForm uploadsEnabled={isSupabaseConfigured()} initialValues={initialValues} />
+      <JobPostForm
+        uploadsEnabled={isSupabaseConfigured()}
+        aiEnabled={isAiEnabled()}
+        initialValues={initialValues}
+      />
     </div>
   );
 }

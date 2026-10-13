@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
+import { Turnstile } from "@/components/ui/Turnstile";
 import { useFetch } from "@/hooks/useFetch";
 import {
   contactSchema,
@@ -28,6 +29,9 @@ export function ContactForm({
 }) {
   const [sent, setSent] = useState(false);
   const { execute, loading, error } = useFetch();
+  // Bot check token (only when Turnstile is configured); single-use.
+  const [captcha, setCaptcha] = useState("");
+  const [captchaReset, setCaptchaReset] = useState(0);
 
   const {
     register,
@@ -45,8 +49,9 @@ export function ContactForm({
     const result = await execute("/api/contact", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
+      body: JSON.stringify({ ...data, turnstileToken: captcha }),
     });
+    setCaptchaReset((n) => n + 1);
     if (result.success) setSent(true);
   };
 
@@ -134,6 +139,8 @@ export function ContactForm({
             {error}
           </motion.p>
         )}
+
+        <Turnstile onToken={setCaptcha} resetSignal={captchaReset} />
 
         <Button type="submit" loading={loading} className="w-full sm:w-auto">
           <Send className="h-4 w-4" />

@@ -10,6 +10,7 @@ import { Eye, EyeOff, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Card } from "@/components/ui/Card";
+import { Turnstile } from "@/components/ui/Turnstile";
 import { useFetch } from "@/hooks/useFetch";
 import { loginSchema, type LoginFormData } from "@/lib/validations";
 import type { Recruiter } from "@/types";
@@ -18,6 +19,9 @@ export function LoginForm() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const { execute, loading, error } = useFetch<Recruiter>();
+  // Bot check token (only when Turnstile is configured); single-use.
+  const [captcha, setCaptcha] = useState("");
+  const [captchaReset, setCaptchaReset] = useState(0);
 
   const {
     register,
@@ -31,8 +35,9 @@ export function LoginForm() {
     const result = await execute("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
+      body: JSON.stringify({ ...data, turnstileToken: captcha }),
     });
+    setCaptchaReset((n) => n + 1);
     if (result.success && result.data) {
       router.push(result.data.role === "admin" ? "/admin" : "/dashboard");
       router.refresh();
@@ -93,6 +98,8 @@ export function LoginForm() {
             {error}
           </motion.p>
         )}
+
+        <Turnstile onToken={setCaptcha} resetSignal={captchaReset} />
 
         <Button type="submit" loading={loading} className="w-full">
           <LogIn className="h-4 w-4" />

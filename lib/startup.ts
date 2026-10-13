@@ -1,4 +1,7 @@
+import { isAiEnabled } from "@/lib/ai/parseJd";
+import { indexingStatus } from "@/lib/indexing";
 import { isMailConfigured, smtpUser, verifyMailConnection } from "@/lib/mail";
+import { isTurnstileEnabled } from "@/lib/turnstile";
 import { bucketName, ensureBucket, getSupabase, isSupabaseConfigured } from "@/lib/supabase";
 
 /**
@@ -117,6 +120,37 @@ function checkAuth(): Line {
   };
 }
 
+/** Optional free APIs: shown as on/off, never as failures. */
+function checkOptional(): Line[] {
+  const idx = indexingStatus();
+  const engines = [idx.indexNow && "IndexNow (Bing etc.)", idx.google && "Google"].filter(Boolean).join(" + ");
+  return [
+    {
+      level: isTurnstileEnabled() ? "ok" : "warn",
+      name: "Bot check",
+      detail: isTurnstileEnabled()
+        ? "Cloudflare Turnstile on (register, login, contact, forgot password)"
+        : "off — set NEXT_PUBLIC_TURNSTILE_SITE_KEY + TURNSTILE_SECRET_KEY",
+    },
+    {
+      level: isAiEnabled() ? "ok" : "warn",
+      name: "AI auto-fill",
+      detail: isAiEnabled()
+        ? `Gemini (${process.env.GEMINI_MODEL || "gemini-flash-latest"})`
+        : "off — set GEMINI_API_KEY (free at aistudio.google.com)",
+    },
+    {
+      level: engines && idx.siteUrl ? "ok" : "warn",
+      name: "Search pings",
+      detail: !engines
+        ? "off — set INDEXNOW_KEY (and optionally Google Indexing API keys)"
+        : idx.siteUrl
+          ? `${engines} notified on job changes`
+          : `${engines} configured, but NEXT_PUBLIC_APP_URL must be the live site URL`,
+    },
+  ];
+}
+
 function checkAppUrl(): Line {
   const url = process.env.NEXT_PUBLIC_APP_URL;
   if (url) return { level: "ok", name: "App URL", detail: url };
@@ -129,7 +163,7 @@ function checkAppUrl(): Line {
 
 export async function printStartupStatus() {
   const [supabaseLines, mail] = await Promise.all([checkSupabase(), checkMail()]);
-  const lines = [...supabaseLines, mail, checkAuth(), checkAppUrl()];
+  const lines = [...supabaseLines, mail, checkAuth(), checkAppUrl(), ...checkOptional()];
 
   if (process.env.MONGODB_URI) {
     lines.push({ level: "warn", name: "MongoDB", detail: "MONGODB_URI is set but no longer used — you can remove it from .env" });

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { fail, ok, serverError } from "@/lib/api";
 import { getCurrentRecruiter } from "@/lib/auth/current";
+import { notifyJobChanged } from "@/lib/indexing";
 import { parseJobBody } from "@/lib/jobInput";
 import { parseJobQuery } from "@/lib/jobQuery";
 import { createJob, searchJobs } from "@/lib/repository";
@@ -32,6 +33,7 @@ export async function POST(request: Request) {
     if (input instanceof NextResponse) return input;
 
     const job = await createJob({ ...input, recruiterId: recruiter.id });
+    notifyJobChanged(job.id);
     return ok("Job posted successfully", job, { status: 201 });
   } catch (err) {
     return serverError(err, "jobs:POST");

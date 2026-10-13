@@ -48,10 +48,13 @@ export default function PrivacyPage() {
 
       <h2>5. Service providers</h2>
       <p>
-        We use trusted providers to run Joblay: database and file storage (Supabase),
-        email delivery (Google) and website hosting.
-        They process data only to provide their services to us. Data may be
-        stored on servers outside India.
+        We use trusted providers to run Joblay: database and file storage
+        (Supabase), email delivery (Google), bot protection on forms
+        (Cloudflare Turnstile) and website hosting. If a recruiter uses the
+        optional AI auto-fill, the job description they paste is sent to
+        Google Gemini to extract the form fields. Providers process data only
+        to provide their services to us. Data may be stored on servers outside
+        India.
       </p>
 
       <h2>6. How long we keep data</h2>

@@ -5,6 +5,7 @@ import { getCurrentRecruiter } from "@/lib/auth/current";
 import { jobToFormValues } from "@/lib/jobInput";
 import { getJobById } from "@/lib/repository";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import { isAiEnabled } from "@/lib/ai/parseJd";
 
 export const metadata = { title: "Edit Job" };
 
@@ -39,6 +40,7 @@ export default async function EditJobPage({
         jobId={job.id}
         initialValues={jobToFormValues(job)}
         uploadsEnabled={isSupabaseConfigured()}
+        aiEnabled={isAiEnabled()}
         redirectTo={isAdmin ? "/admin" : "/dashboard"}
       />
     </div>

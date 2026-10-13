@@ -3,7 +3,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { motion } from "framer-motion";
-import { CheckCircle2, Paperclip, Send, X } from "lucide-react";
+import { CheckCircle2, Paperclip, Send, Sparkles, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
@@ -47,6 +47,8 @@ interface JobPostFormProps {
   initialValues?: Partial<JobPostFormData>;
   /** Where to go after saving (defaults to the dashboard). */
   redirectTo?: string;
+  /** Show "paste a JD → auto-fill" (Gemini configured on the server). */
+  aiEnabled?: boolean;
 }
 
 export function JobPostForm({
@@ -54,6 +56,7 @@ export function JobPostForm({
   jobId,
   initialValues,
   redirectTo = "/dashboard",
+  aiEnabled = false,
 }: JobPostFormProps) {
   const router = useRouter();
   const isEdit = Boolean(jobId);
@@ -73,6 +76,8 @@ export function JobPostForm({
     handleSubmit,
     watch,
     setValue,
+    getValues,
+    reset,
     formState: { errors },
   } = useForm<JobPostFormData>({
     resolver: zodResolver(jobPostSchema),
@@ -81,6 +86,23 @@ export function JobPostForm({
 
   const industry = watch("industry");
   const subRole = watch("subRole");
+
+  // The sub-role <select> only has options once the industry is applied, so
+  // an AI-suggested sub-role is set on the render after.
+  const [pendingSubRole, setPendingSubRole] = useState<string | null>(null);
+  useEffect(() => {
+    if (pendingSubRole && getSubRoles(industry).includes(pendingSubRole)) {
+      setValue("subRole", pendingSubRole);
+      setPendingSubRole(null);
+    }
+  }, [industry, pendingSubRole, setValue]);
+
+  const applyAiFields = (fields: Partial<JobPostFormData>) => {
+    const { subRole: aiSubRole, tags, ...rest } = fields;
+    reset({ ...getValues(), ...rest, subRole: "" }, { keepDefaultValues: true });
+    setSelectedTags(tags ?? []);
+    setPendingSubRole(aiSubRole ?? null);
+  };
   const subRoles = getSubRoles(industry);
   const nicheTags = getNicheTags(industry, subRole);
 
@@ -151,6 +173,7 @@ export function JobPostForm({
 
   return (
     <Card className="p-6 sm:p-8">
+      {aiEnabled && <AiFillPanel onFill={applyAiFields} />}
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
           <Input
@@ -464,5 +487,77 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
     <h3 className="border-t border-border pt-5 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
       {children}
     </h3>
+  );
+}
+
+function AiFillPanel({ onFill }: { onFill: (fields: Partial<JobPostFormData>) => void }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [status, setStatus] = useState<{ ok: boolean; message: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const run = async () => {
+    setBusy(true);
+    setStatus(null);
+    try {
+      const res = await fetch("/api/ai/parse-jd", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      const json = await res.json();
+      if (!json.success) {
+        const fieldError = json.errors?.text?.[0];
+        setStatus({ ok: false, message: fieldError || json.message });
+        return;
+      }
+      onFill(json.data);
+      const filled = Object.keys(json.data).length;
+      setStatus({ ok: true, message: `Filled ${filled} fields. Please check everything below before posting.` });
+      setOpen(false);
+    } catch {
+      setStatus({ ok: false, message: "Network error. Please try again." });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mb-6 rounded-xl border border-saffron/30 bg-saffron/5 p-4">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-2 text-left text-sm font-semibold"
+      >
+        <Sparkles className="h-4 w-4 text-saffron" />
+        Already have a job description? Paste it and we&apos;ll fill the form
+      </button>
+      {open && (
+        <div className="mt-3 space-y-3">
+          <Textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Paste the full JD here — title, responsibilities, requirements, salary, location, contact..."
+            className="min-h-[180px]"
+            aria-label="Job description to auto-fill from"
+          />
+          <div className="flex flex-wrap items-center gap-3">
+            <Button type="button" onClick={run} loading={busy} disabled={text.trim().length < 80}>
+              <Sparkles className="h-4 w-4" />
+              Auto-fill with AI
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Sent to Google Gemini to read. Don&apos;t include anything confidential.
+            </p>
+          </div>
+        </div>
+      )}
+      {status && (
+        <p className={cn("mt-3 text-sm", status.ok ? "text-india-green" : "text-red-500")} role="status">
+          {status.message}
+        </p>
+      )}
+    </div>
   );
 }
