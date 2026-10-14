@@ -113,6 +113,19 @@ export const industries = [
   "HR & Admin",
   "Customer Support",
   "Legal",
+  "Telecom",
+  "Automobile",
+  "Energy & Power",
+  "FMCG",
+  "Textile & Apparel",
+  "Agriculture",
+  "Aviation",
+  "Consulting",
+  "Government & PSU",
+  "NGO & Social Work",
+  "Beauty & Wellness",
+  "Security Services",
+  "Skilled Trades",
 ] as const;
 
 export type Industry = (typeof industries)[number];
@@ -221,6 +234,59 @@ export const industryHierarchy: Record<Industry, Record<string, string[]>> = {
   },
   Legal: {
     Legal: ["Corporate Lawyer", "Legal Advisor", "Company Secretary", "Paralegal"],
+  },
+  Telecom: {
+    Network: ["RF Engineer", "Telecom Engineer", "Fiber Optic Technician", "Tower Technician"],
+    Operations: ["NOC Engineer", "Telecom Sales", "Field Technician"],
+  },
+  Automobile: {
+    Engineering: ["Automobile Engineer", "R&D Engineer", "Vehicle Testing"],
+    Service: ["Service Advisor", "Auto Mechanic", "Workshop Manager"],
+    Sales: ["Car Sales Executive", "Dealership Manager", "Spare Parts Executive"],
+  },
+  "Energy & Power": {
+    Power: ["Power Plant Engineer", "Transmission Engineer", "Substation Operator"],
+    Renewables: ["Solar Engineer", "Wind Energy Technician", "Solar Installer"],
+    "Oil & Gas": ["Petroleum Engineer", "Drilling Engineer", "HSE Officer"],
+  },
+  FMCG: {
+    Sales: ["Sales Officer", "Area Sales Manager", "Distributor Manager", "Merchandiser"],
+    Operations: ["Production Executive", "Food Technologist", "Quality Executive"],
+  },
+  "Textile & Apparel": {
+    Production: ["Merchandiser", "Garment Technician", "Pattern Maker", "Tailor"],
+    Design: ["Fashion Designer", "Textile Designer"],
+  },
+  Agriculture: {
+    Farming: ["Agronomist", "Farm Manager", "Agriculture Officer"],
+    "Agri Business": ["Agri Sales", "Dairy Technologist", "Seed Sales"],
+  },
+  Aviation: {
+    Crew: ["Cabin Crew", "Pilot", "Ground Staff"],
+    Technical: ["Aircraft Maintenance Engineer", "Air Traffic Controller"],
+    Operations: ["Airport Operations", "Cargo Executive"],
+  },
+  Consulting: {
+    Management: ["Management Consultant", "Strategy Analyst", "Associate Consultant"],
+    "Risk & Advisory": ["Risk Consultant", "Tax Consultant", "Audit Associate"],
+  },
+  "Government & PSU": {
+    Administration: ["Clerk", "Assistant", "Section Officer"],
+    Technical: ["Junior Engineer", "Technical Officer", "Scientist"],
+  },
+  "NGO & Social Work": {
+    Programs: ["Program Manager", "Field Coordinator", "Social Worker"],
+    Fundraising: ["Fundraising Executive", "CSR Executive", "Grant Writer"],
+  },
+  "Beauty & Wellness": {
+    Salon: ["Beautician", "Hair Stylist", "Makeup Artist", "Salon Manager"],
+    Fitness: ["Gym Trainer", "Yoga Instructor", "Dietitian", "Spa Therapist"],
+  },
+  "Security Services": {
+    Security: ["Security Guard", "Security Supervisor", "Bouncer", "CCTV Operator"],
+  },
+  "Skilled Trades": {
+    Trades: ["Plumber", "Carpenter", "Welder", "Fitter", "Painter", "AC Technician"],
   },
 };
 
