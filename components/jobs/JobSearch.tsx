@@ -139,14 +139,14 @@ export function JobSearch({
     <>
       {/* What + where */}
       <section className="border-b border-border bg-gradient-to-br from-saffron/5 via-background to-india-green/5">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
-          <h1 className="text-3xl sm:text-5xl font-bold tracking-tight max-w-3xl leading-[1.1]">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 sm:py-14">
+          <h1 className="text-[1.65rem] sm:text-5xl font-bold tracking-tight max-w-3xl leading-[1.15] sm:leading-[1.1]">
             Find your next role.{" "}
             <span className="bg-gradient-to-r from-saffron to-saffron-dark bg-clip-text text-transparent">
               Reach out directly.
             </span>
           </h1>
-          <p className="mt-3 text-muted-foreground max-w-2xl">
+          <p className="mt-2 sm:mt-3 text-sm sm:text-base text-muted-foreground max-w-2xl">
             Filter by skill, city, experience and salary — then call, WhatsApp or email the recruiter. No sign-up.
           </p>
         </div>
@@ -159,7 +159,7 @@ export function JobSearch({
       <div className="sticky top-16 z-30 border-b border-border/60 bg-background/90 backdrop-blur-xl">
         <form
           onSubmit={submitSearch}
-          className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap sm:flex-nowrap gap-2"
+          className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-2.5 sm:py-3 flex flex-wrap sm:flex-nowrap gap-2"
           role="search"
         >
           <div className="relative basis-full sm:basis-auto sm:flex-1">
@@ -246,7 +246,7 @@ export function JobSearch({
         </form>
       </div>
 
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 lg:py-10 lg:grid lg:grid-cols-[17rem_1fr] lg:gap-8">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-5 sm:py-8 lg:py-10 lg:grid lg:grid-cols-[17rem_1fr] lg:gap-8">
         {/* Desktop sidebar — sticks just below the navbar + search bar (4rem + ~4.3rem). */}
         <aside className="hidden lg:block sticky top-38 self-start" aria-label="Filters">
           <div className="max-h-[calc(100vh-10.5rem)] overflow-y-auto overscroll-contain pr-2">
@@ -294,11 +294,11 @@ export function JobSearch({
             <p className="text-sm text-muted-foreground flex items-center gap-2">
               {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
               {result ? (
-                <>
+                <span>
                   <span className="font-semibold text-foreground">{result.total}</span>
                   {result.total === 1 ? " job" : " jobs"}
                   {query.q && <> for &ldquo;{query.q}&rdquo;</>}
-                </>
+                </span>
               ) : (
                 "Jobs"
               )}

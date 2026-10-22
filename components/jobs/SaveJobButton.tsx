@@ -5,7 +5,15 @@ import { useSavedJobs } from "@/hooks/useStoredList";
 import { cn } from "@/lib/utils";
 
 /** Heart toggle that saves a job in this browser (see /saved). */
-export function SaveJobButton({ jobId, withLabel = false }: { jobId: string; withLabel?: boolean }) {
+export function SaveJobButton({
+  jobId,
+  withLabel = false,
+  className,
+}: {
+  jobId: string;
+  withLabel?: boolean;
+  className?: string;
+}) {
   const { list, toggle } = useSavedJobs();
   const saved = list.includes(jobId);
   return (
@@ -20,7 +28,8 @@ export function SaveJobButton({ jobId, withLabel = false }: { jobId: string; wit
         withLabel ? "h-9 px-3 text-sm font-medium" : "h-8 w-8",
         saved
           ? "border-saffron/40 bg-saffron/10 text-saffron-dark dark:text-saffron"
-          : "border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+          : "border-border text-muted-foreground hover:text-foreground hover:bg-muted",
+        className
       )}
     >
       <Heart className={cn("h-4 w-4", saved && "fill-current")} />

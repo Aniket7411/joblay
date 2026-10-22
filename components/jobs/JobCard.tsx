@@ -61,7 +61,7 @@ export function JobCard({ job, now, compact = false }: { job: JobPosting; now: n
             <Clock className="h-3 w-3" />
             {postedAgo(job.createdAt, now)}
           </span>
-          <SaveJobButton jobId={job.id} />
+          <SaveJobButton jobId={job.id} className={cn(compact && "max-sm:h-7 max-sm:w-7")} />
         </div>
       </div>
 
@@ -106,12 +106,17 @@ export function JobCard({ job, now, compact = false }: { job: JobPosting; now: n
       <p className={cn("text-sm text-muted-foreground line-clamp-2 mt-3 flex-1", full)}>{job.description}</p>
 
       {compact && (
-        <Link
-          href={`/jobs/${job.id}`}
-          className="sm:hidden mt-auto pt-3 block text-center rounded-lg bg-saffron/10 py-2 text-xs font-semibold text-saffron-dark dark:text-saffron"
-        >
-          View job
-        </Link>
+        <div className="sm:hidden mt-auto pt-2.5">
+          <p className="mb-2.5 text-[11px] font-medium text-muted-foreground truncate">
+            {job.workMode} · {job.jobType}
+          </p>
+          <Link
+            href={`/jobs/${job.id}`}
+            className="block rounded-lg bg-saffron/10 py-2 text-center text-xs font-semibold text-saffron-dark dark:text-saffron active:bg-saffron/20"
+          >
+            View job
+          </Link>
+        </div>
       )}
 
       <div className={cn("flex items-center justify-between gap-3 mt-3 mb-4 text-xs", full)}>
