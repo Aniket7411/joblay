@@ -90,7 +90,7 @@ export default async function JobPage({ params }: { params: Params }) {
   ];
 
   return (
-    <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-8 lg:py-12">
+    <div className={`mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-12 ${live ? "max-lg:pb-28" : ""}`}>
       {live && (
         <script
           type="application/ld+json"
@@ -177,7 +177,7 @@ export default async function JobPage({ params }: { params: Params }) {
           </section>
         </div>
 
-        <aside className="space-y-4">
+        <aside id="contact" className="space-y-4 scroll-mt-20">
           <Card className="p-5 lg:sticky lg:top-20">
             <h2 className="font-semibold mb-1">Contact the recruiter</h2>
             {job.contact.name && <p className="text-sm text-muted-foreground mb-3">{job.contact.name}</p>}
@@ -227,12 +227,32 @@ export default async function JobPage({ params }: { params: Params }) {
       {similar.length > 0 && (
         <section className="mt-12">
           <h2 className="font-semibold text-xl mb-4">Similar jobs</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 max-sm:gap-2 sm:grid-cols-1 md:grid-cols-2 gap-4">
             {similar.map((j) => (
-              <JobCard key={j.id} job={j} now={now} />
+              <JobCard key={j.id} job={j} now={now} compact />
             ))}
           </div>
         </section>
+      )}
+
+      {/* Phones: the contact box sits below the whole description, so keep a way to it on screen. */}
+      {live && (
+        <div className="lg:hidden fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 backdrop-blur-xl px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <div className="mx-auto flex max-w-5xl items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold">{formatSalary(job.salaryMin, job.salaryMax)}</p>
+              <p className="truncate text-xs text-muted-foreground">
+                {job.location} · {formatExperience(job.experienceMin, job.experienceMax)}
+              </p>
+            </div>
+            <a
+              href="#contact"
+              className="shrink-0 rounded-xl bg-gradient-to-r from-saffron to-saffron-dark px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-saffron/25"
+            >
+              Contact recruiter
+            </a>
+          </div>
+        </div>
       )}
     </div>
   );

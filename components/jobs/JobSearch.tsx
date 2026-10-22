@@ -372,7 +372,7 @@ export function JobSearch({
           <div className={cn("transition-opacity", pending && loadingMore && "opacity-60")}>
             {pending && !loadingMore ? (
               <div
-                className={cn("grid xl:grid-cols-2 gap-4", twoPerRow ? "grid-cols-2 max-sm:gap-2.5 sm:grid-cols-1" : "grid-cols-1")}
+                className={cn("grid xl:grid-cols-2 gap-4", twoPerRow ? "grid-cols-2 max-sm:gap-2 sm:grid-cols-1" : "grid-cols-1")}
                 aria-label="Loading jobs"
               >
                 {Array.from({ length: 4 }, (_, i) => (
@@ -422,7 +422,7 @@ export function JobSearch({
             ) : (
               <>
                 <div
-                  className={cn("grid xl:grid-cols-2 gap-4", twoPerRow ? "grid-cols-2 max-sm:gap-2.5 sm:grid-cols-1" : "grid-cols-1")}
+                  className={cn("grid xl:grid-cols-2 gap-4", twoPerRow ? "grid-cols-2 max-sm:gap-2 sm:grid-cols-1" : "grid-cols-1")}
                 >
                   {result.jobs.map((job) => (
                     <JobCard key={job.id} job={job} now={now} compact={twoPerRow} />
