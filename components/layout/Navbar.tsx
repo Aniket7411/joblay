@@ -16,6 +16,8 @@ import {
   X,
 } from "lucide-react";
 import { useTheme } from "next-themes";
+import { PaletteSwitcher } from "@/components/layout/PaletteSwitcher";
+import { SavedJobsLink } from "@/components/layout/SavedJobsLink";
 import { Button } from "@/components/ui/Button";
 import { useMounted } from "@/hooks/useMounted";
 import { cn } from "@/lib/utils";
@@ -48,7 +50,7 @@ export function Navbar() {
             J
           </div>
           <span className="text-xl font-bold tracking-tight">
-            Joblay<span className="text-saffron"> Jobs</span>
+            Joblay
           </span>
         </Link>
 
@@ -82,6 +84,8 @@ export function Navbar() {
         </div>
 
         <div className="flex items-center gap-2">
+          <SavedJobsLink active={pathname === "/saved"} />
+          <PaletteSwitcher />
           {mounted && (
             <button
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}

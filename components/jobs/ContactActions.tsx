@@ -4,6 +4,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Check, Copy, Mail, MessageCircle, Phone } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { trackJob } from "@/lib/trackJob";
 import type { RecruiterContact } from "@/types";
 
 /**
@@ -11,9 +12,11 @@ import type { RecruiterContact } from "@/types";
  * and Email (mailto / copy). Details stay hidden until the candidate asks.
  */
 export function ContactActions({
+  jobId,
   contact,
   jobTitle,
 }: {
+  jobId: string;
   contact: RecruiterContact;
   jobTitle: string;
 }) {
@@ -68,7 +71,10 @@ export function ContactActions({
               </div>
             </motion.div>
           ) : (
-            <Button size="sm" variant="secondary" className="w-full" onClick={() => setRevealed("phone")}>
+            <Button size="sm" variant="secondary" className="w-full" onClick={() => {
+                setRevealed("phone");
+                trackJob(jobId, "contact");
+              }}>
               <Phone className="h-3.5 w-3.5" />
               Number
             </Button>
@@ -104,6 +110,7 @@ export function ContactActions({
               className="w-full"
               onClick={() => {
                 setRevealed("email");
+                trackJob(jobId, "contact");
                 copyEmail();
               }}
             >

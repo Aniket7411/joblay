@@ -2,6 +2,7 @@ import { z } from "zod";
 import { fail, ok, serverError, validationFailed } from "@/lib/api";
 import { AiUnavailableError, isAiEnabled, MAX_JD_CHARS, parseJobDescription } from "@/lib/ai/parseJd";
 import { getCurrentRecruiter } from "@/lib/auth/current";
+import { getTaxonomy } from "@/lib/taxonomy";
 
 const bodySchema = z.object({
   text: z.string().trim().min(80, "Paste the full job description (at least a few lines)").max(MAX_JD_CHARS, "That's too long — paste just the job description"),
@@ -26,7 +27,7 @@ export async function POST(request: Request) {
     if (recent.length >= LIMIT) return fail("You've used AI auto-fill a lot this hour. Please try again later.", 429);
     usage.set(recruiter.id, [...recent, now]);
 
-    const fields = await parseJobDescription(parsed.data.text);
+    const fields = await parseJobDescription(parsed.data.text, await getTaxonomy());
     return ok("Form filled from your job description", fields);
   } catch (err) {
     if (err instanceof AiUnavailableError) return fail(err.message, 503);

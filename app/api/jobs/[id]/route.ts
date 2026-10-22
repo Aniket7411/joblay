@@ -3,6 +3,7 @@ import { fail, ok, serverError } from "@/lib/api";
 import { getCurrentRecruiter } from "@/lib/auth/current";
 import { notifyJobChanged } from "@/lib/indexing";
 import { parseJobBody } from "@/lib/jobInput";
+import { getTaxonomy } from "@/lib/taxonomy";
 import { deleteJob, updateJob } from "@/lib/repository";
 
 type Params = { params: Promise<{ id: string }> };
@@ -13,7 +14,7 @@ export async function PATCH(request: Request, { params }: Params) {
     const user = await getCurrentRecruiter();
     if (!user) return fail("Please sign in", 401);
 
-    const input = parseJobBody(await request.json());
+    const input = parseJobBody(await request.json(), await getTaxonomy());
     if (input instanceof NextResponse) return input;
 
     const { id } = await params;

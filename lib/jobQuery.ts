@@ -12,6 +12,7 @@ import {
   locations,
   MAX_EXPERIENCE_YEARS,
   postedWithinOptions,
+  salaryOptions,
   sortOptions,
   workModes,
 } from "@/lib/data/filterHierarchy";
@@ -84,14 +85,17 @@ function int(params: Params, key: string, min: number, max: number): number | un
   return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.floor(n))) : undefined;
 }
 
-/** Parses and sanitizes filters from a URL query (unknown values are dropped). */
-export function parseJobQuery(params: Params): JobQuery {
+/**
+ * Parses and sanitizes filters from a URL query (unknown values are dropped).
+ * Pass `allIndustries` (keys of getTaxonomy()) so admin-added industries count.
+ */
+export function parseJobQuery(params: Params, allIndustries: readonly string[] = industries): JobQuery {
   const sort = get(params, "sort");
   const posted = get(params, "postedWithin");
   return {
     q: get(params, "q").trim().slice(0, 100),
     location: list(params, "location", locations),
-    industry: list(params, "industry", industries),
+    industry: list(params, "industry", allIndustries),
     subRole: list(params, "subRole"),
     tags: list(params, "tags"),
     jobProfile: list(params, "jobProfile", jobProfiles),
@@ -162,4 +166,46 @@ export function postedAgo(iso: string, now = Date.now()): string {
   if (days < 7) return `${days} days ago`;
   if (days < 30) return `${Math.floor(days / 7)} week${days < 14 ? "" : "s"} ago`;
   return `${Math.floor(days / 30)} month${days < 60 ? "" : "s"} ago`;
+}
+
+export interface FilterChip {
+  key: string;
+  label: string;
+  /** Patch that removes just this value. */
+  remove: Partial<JobQuery>;
+}
+
+/** One removable chip per active filter value. */
+export function filterChips(q: JobQuery): FilterChip[] {
+  const chips: FilterChip[] = [];
+  const listKeys = ["workMode", "location", "industry", "subRole", "tags", "jobProfile", "jobType", "education"] as const;
+  for (const key of listKeys) {
+    for (const value of q[key]) {
+      chips.push({ key: `${key}:${value}`, label: value, remove: { [key]: q[key].filter((v) => v !== value) } });
+    }
+  }
+  if (q.experience !== undefined) {
+    chips.push({
+      key: "experience",
+      label: q.experience === 0 ? "Fresher" : `${q.experience} yrs exp`,
+      remove: { experience: undefined },
+    });
+  }
+  if (q.salary !== undefined) {
+    chips.push({
+      key: "salary",
+      label: salaryOptions.find((o) => o.value === String(q.salary))?.label ?? `${q.salary}+ LPA`,
+      remove: { salary: undefined },
+    });
+  }
+  if (q.postedWithin !== undefined) {
+    chips.push({
+      key: "posted",
+      label: postedWithinOptions.find((o) => o.value === String(q.postedWithin))?.label ?? "Recent",
+      remove: { postedWithin: undefined },
+    });
+  }
+  if (q.hasPhone) chips.push({ key: "hasPhone", label: "Has phone", remove: { hasPhone: false } });
+  if (q.hasEmail) chips.push({ key: "hasEmail", label: "Has email", remove: { hasEmail: false } });
+  return chips;
 }

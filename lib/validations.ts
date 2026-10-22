@@ -36,6 +36,7 @@ export const jobPostSchema = z
     salaryMin: lpaField,
     salaryMax: lpaField,
     openings: z.string().regex(/^[1-9]\d{0,3}$/, "Enter number of openings"),
+    urgent: z.boolean().optional(),
     description: z
       .string()
       .min(20, "Description must be at least 20 characters")
@@ -134,12 +135,14 @@ export const contactTopics = [
   { value: "report", label: "Report a job listing" },
   { value: "recruiter", label: "Recruiter support" },
   { value: "privacy", label: "Privacy / data request" },
+  // Also what the bulk hiring popup sends.
+  { value: "bulk", label: "Bulk hiring enquiry" },
 ] as const;
 
 export const contactSchema = z.object({
   name: z.string().trim().min(2, "Please enter your name").max(80),
   email: z.string().email("Please enter a valid email address"),
-  topic: z.enum(["general", "report", "recruiter", "privacy"]),
+  topic: z.enum(["general", "report", "recruiter", "privacy", "bulk"]),
   message: z
     .string()
     .trim()

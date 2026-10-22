@@ -5,9 +5,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
+  AlertTriangle,
   Briefcase,
   Copy,
+  Eye,
   ExternalLink,
+  Phone,
   Pencil,
   Plus,
   RefreshCw,
@@ -21,10 +24,12 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { formatExperience, formatSalary } from "@/lib/jobQuery";
 import { cn } from "@/lib/utils";
-import type { JobPosting, Recruiter } from "@/types";
+import type { JobPosting, JobStats, Recruiter } from "@/types";
 
 type JobState = "live" | "closed" | "expired";
 const DAY = 86_400_000;
+/** Warn about live jobs expiring within this many days. */
+const EXPIRY_WARNING_DAYS = 3;
 
 function stateOf(job: JobPosting, now: number): JobState {
   if (job.status === "closed") return "closed";
@@ -34,10 +39,13 @@ function stateOf(job: JobPosting, now: number): JobState {
 export function DashboardClient({
   recruiter,
   initialJobs,
+  stats,
   now,
 }: {
   recruiter: Recruiter;
   initialJobs: JobPosting[];
+  /** Views and contact taps per job id. */
+  stats: Record<string, JobStats>;
   now: number;
 }) {
   const router = useRouter();
@@ -78,9 +86,20 @@ export function DashboardClient({
     router.refresh();
   };
 
+  const renewAll = async (list: JobPosting[]) => {
+    for (const job of list) await changeStatus(job, "renew");
+  };
+
   const counts = { live: 0, closed: 0, expired: 0 };
   for (const j of jobs) counts[stateOf(j, now)]++;
   const shown = filter === "all" ? jobs : jobs.filter((j) => stateOf(j, now) === filter);
+  const expiringSoon = jobs.filter(
+    (j) => stateOf(j, now) === "live" && new Date(j.expiresAt).getTime() - now <= EXPIRY_WARNING_DAYS * DAY
+  );
+  const totals = Object.values(stats).reduce(
+    (t, s) => ({ views: t.views + s.views, contacts: t.contacts + s.contacts }),
+    { views: 0, contacts: 0 }
+  );
 
   return (
     <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-10 lg:py-16">
@@ -116,6 +135,45 @@ export function DashboardClient({
           </Button>
         </div>
       </motion.div>
+
+      {expiringSoon.length > 0 && (
+        <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+          <p className="flex items-start gap-2 text-sm">
+            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+            <span>
+              <span className="font-semibold">
+                {expiringSoon.length === 1
+                  ? `"${expiringSoon[0].title}" expires`
+                  : `${expiringSoon.length} jobs expire`}{" "}
+                within {EXPIRY_WARNING_DAYS} days.
+              </span>{" "}
+              Renew to keep {expiringSoon.length === 1 ? "it" : "them"} live for another 30 days.
+            </span>
+          </p>
+          <Button size="sm" loading={busy !== null} onClick={() => renewAll(expiringSoon)}>
+            <RefreshCw className="h-3.5 w-3.5" />
+            {expiringSoon.length === 1 ? "Renew" : "Renew all"}
+          </Button>
+        </div>
+      )}
+
+      {jobs.length > 0 && (
+        <div className="mb-6 grid grid-cols-3 gap-3">
+          {[
+            { label: "Live jobs", value: counts.live, icon: Briefcase },
+            { label: "Job views", value: totals.views, icon: Eye },
+            { label: "Contact taps", value: totals.contacts, icon: Phone },
+          ].map(({ label, value, icon: Icon }) => (
+            <Card key={label} className="p-4">
+              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </p>
+              <p className="mt-1 text-2xl font-bold tabular-nums">{value}</p>
+            </Card>
+          ))}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2 mb-5">
         <h2 className="text-lg font-semibold flex items-center gap-2 mr-2">
@@ -179,6 +237,18 @@ export function DashboardClient({
                       {formatExperience(job.experienceMin, job.experienceMax)} ·{" "}
                       {formatSalary(job.salaryMin, job.salaryMax)} · posted{" "}
                       {new Date(job.createdAt).toLocaleDateString("en-IN")}
+                    </p>
+                    <p className="mt-2 flex items-center gap-4 text-sm">
+                      <span className="flex items-center gap-1.5" title="Times candidates opened this job">
+                        <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span className="font-medium tabular-nums">{stats[job.id]?.views ?? 0}</span>
+                        <span className="text-muted-foreground">views</span>
+                      </span>
+                      <span className="flex items-center gap-1.5" title="Times candidates tapped Number or Email">
+                        <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span className="font-medium tabular-nums">{stats[job.id]?.contacts ?? 0}</span>
+                        <span className="text-muted-foreground">contacts</span>
+                      </span>
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2 shrink-0">

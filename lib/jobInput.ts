@@ -3,9 +3,9 @@ import { fail, validationFailed } from "@/lib/api";
 import {
   getNicheTags,
   getSubRoles,
-  industries,
   jobProfiles,
   locations,
+  type Taxonomy,
 } from "@/lib/data/filterHierarchy";
 import type { JobInput } from "@/lib/repository";
 import { normalizePhone } from "@/lib/phone";
@@ -18,7 +18,7 @@ import { jobPostSchema, type JobPostFormData } from "@/lib/validations";
  */
 const NUMERIC_FIELDS = ["experienceMin", "experienceMax", "salaryMin", "salaryMax", "openings"];
 
-export function parseJobBody(body: unknown): JobInput | NextResponse {
+export function parseJobBody(body: unknown, taxonomy: Taxonomy): JobInput | NextResponse {
   // API clients may send numbers; the form sends strings. Normalize first.
   if (body && typeof body === "object") {
     body = { ...body };
@@ -34,12 +34,12 @@ export function parseJobBody(body: unknown): JobInput | NextResponse {
 
   // Keep values inside the known filter hierarchy so jobs stay discoverable
   // through the candidate filters.
-  const allowedTags = getNicheTags(data.industry, data.subRole);
+  const allowedTags = getNicheTags(data.industry, data.subRole, taxonomy);
   if (
     !(locations as readonly string[]).includes(data.location) ||
     !(jobProfiles as readonly string[]).includes(data.jobProfile) ||
-    !(industries as readonly string[]).includes(data.industry) ||
-    !getSubRoles(data.industry).includes(data.subRole) ||
+    !Object.hasOwn(taxonomy, data.industry) ||
+    !getSubRoles(data.industry, taxonomy).includes(data.subRole) ||
     !data.tags.every((t) => allowedTags.includes(t))
   ) {
     return fail("Invalid location, profile, industry, sub-role or tags", 400);
@@ -93,6 +93,7 @@ export function parseJobBody(body: unknown): JobInput | NextResponse {
     salaryMin,
     salaryMax: salaryMin === undefined ? undefined : Number(data.salaryMax || data.salaryMin),
     openings: Number(data.openings),
+    urgent: data.urgent ?? false,
   };
 }
 
@@ -117,6 +118,7 @@ export function jobToFormValues(job: {
   salaryMin?: number;
   salaryMax?: number;
   openings: number;
+  urgent?: boolean;
 }): JobPostFormData {
   return {
     title: job.title,
@@ -140,5 +142,6 @@ export function jobToFormValues(job: {
     salaryMin: job.salaryMin === undefined ? "" : String(job.salaryMin),
     salaryMax: job.salaryMax === undefined ? "" : String(job.salaryMax),
     openings: String(job.openings),
+    urgent: job.urgent ?? false,
   };
 }

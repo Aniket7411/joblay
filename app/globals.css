@@ -29,6 +29,29 @@
   --chart-bar: #cc6f1a;
 }
 
+/*
+ * Trial colour palettes, picked from the navbar (components/layout/PaletteSwitcher.tsx).
+ * Each one re-points the brand tokens: --saffron = primary, --saffron-dark = hover /
+ * accent text, --india-green = secondary. No attribute = the original saffron palette.
+ */
+[data-palette="indigo"] { --saffron: #6366f1; --saffron-dark: #4f46e5; --india-green: #d97706; --india-green-dark: #b45309; }
+.dark[data-palette="indigo"] { --saffron: #818cf8; --saffron-dark: #a5b4fc; --india-green: #fbbf24; --india-green-dark: #f59e0b; }
+
+[data-palette="ocean"] { --saffron: #2563eb; --saffron-dark: #1d4ed8; --india-green: #0d9488; --india-green-dark: #0f766e; }
+.dark[data-palette="ocean"] { --saffron: #3b82f6; --saffron-dark: #93c5fd; --india-green: #2dd4bf; --india-green-dark: #14b8a6; }
+
+[data-palette="teal"] { --saffron: #0d9488; --saffron-dark: #0f766e; --india-green: #ea580c; --india-green-dark: #c2410c; }
+.dark[data-palette="teal"] { --saffron: #14b8a6; --saffron-dark: #5eead4; --india-green: #fb923c; --india-green-dark: #f97316; }
+
+[data-palette="violet"] { --saffron: #7c3aed; --saffron-dark: #6d28d9; --india-green: #db2777; --india-green-dark: #be185d; }
+.dark[data-palette="violet"] { --saffron: #8b5cf6; --saffron-dark: #c4b5fd; --india-green: #f472b6; --india-green-dark: #ec4899; }
+
+[data-palette="emerald"] { --saffron: #059669; --saffron-dark: #047857; --india-green: #0284c7; --india-green-dark: #0369a1; }
+.dark[data-palette="emerald"] { --saffron: #10b981; --saffron-dark: #6ee7b7; --india-green: #38bdf8; --india-green-dark: #0ea5e9; }
+
+[data-palette="coral"] { --saffron: #f43f5e; --saffron-dark: #e11d48; --india-green: #0891b2; --india-green-dark: #0e7490; }
+.dark[data-palette="coral"] { --saffron: #fb7185; --saffron-dark: #fda4af; --india-green: #22d3ee; --india-green-dark: #06b6d4; }
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

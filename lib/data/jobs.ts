@@ -128,6 +128,7 @@ const seeds: Seed[] = [
     description: "US-shift customer support. Cab facility and night-shift allowance.",
     criteria: ["Fluent English", "Comfortable with night shifts", "12th pass or graduate"],
     contact: { name: "HR Desk", phone: "+919830012345", email: "hr@callserve.example" },
+    urgent: true,
     postedDaysAgo: 20,
   },
 ];

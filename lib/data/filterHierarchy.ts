@@ -290,15 +290,55 @@ export const industryHierarchy: Record<Industry, Record<string, string[]>> = {
   },
 };
 
-export function getSubRoles(industry: string): string[] {
-  if (!industry || !(industry in industryHierarchy)) return [];
-  return Object.keys(industryHierarchy[industry as Industry]);
+/** Industry → sub-role → niche tags: the built-in list plus admin additions. */
+export type Taxonomy = Record<string, Record<string, string[]>>;
+
+/**
+ * An admin-added category. Industry only → new industry; with subRole → new
+ * role under that industry; with tag too → new skill under that role.
+ */
+export interface TaxonomyEntry {
+  id: string;
+  industry: string;
+  subRole?: string;
+  tag?: string;
+  createdAt: string;
 }
 
-export function getNicheTags(industry: string, subRole: string): string[] {
-  if (!industry || !(industry in industryHierarchy)) return [];
-  const hierarchy = industryHierarchy[industry as Industry];
-  return hierarchy[subRole] ?? [];
+/** Built-in hierarchy with admin additions appended (built-in order first). */
+export function mergeTaxonomy(entries: readonly TaxonomyEntry[]): Taxonomy {
+  const out: Taxonomy = {};
+  for (const [industry, roles] of Object.entries(industryHierarchy)) {
+    out[industry] = Object.fromEntries(Object.entries(roles).map(([r, tags]) => [r, [...tags]]));
+  }
+  // Parents before children, so a role added before its industry still lands.
+  const depth = (e: TaxonomyEntry) => (e.tag ? 2 : e.subRole ? 1 : 0);
+  for (const e of [...entries].sort((a, b) => depth(a) - depth(b))) {
+    if (!e.subRole) {
+      out[e.industry] ??= {};
+    } else if (!e.tag) {
+      if (out[e.industry]) out[e.industry][e.subRole] ??= [];
+    } else {
+      const tags = out[e.industry]?.[e.subRole];
+      if (tags && !tags.includes(e.tag)) tags.push(e.tag);
+    }
+  }
+  return out;
+}
+
+export function getSubRoles(industry: string, taxonomy: Taxonomy = industryHierarchy): string[] {
+  if (!industry || !Object.hasOwn(taxonomy, industry)) return [];
+  return Object.keys(taxonomy[industry]);
+}
+
+export function getNicheTags(
+  industry: string,
+  subRole: string,
+  taxonomy: Taxonomy = industryHierarchy
+): string[] {
+  if (!industry || !Object.hasOwn(taxonomy, industry)) return [];
+  const roles = taxonomy[industry];
+  return Object.hasOwn(roles, subRole) ? roles[subRole] : [];
 }
 
 export const includes = <T extends string>(list: readonly T[], value: string): value is T =>

@@ -34,6 +34,7 @@ lib/
   jobInput.ts                Validates and normalises job create/edit bodies
   validations.ts             Zod schemas shared by forms and API
   data/filterHierarchy.ts    Locations, industries -> roles -> skills, option lists
+  taxonomy.ts                getTaxonomy(): built-in industries + admin additions (taxonomy_entries)
   auth/                      Password hashing, signed session cookie, current user, reset links
   supabase.ts                Supabase client and file uploads
   mail.ts                    SMTP emails
@@ -60,13 +61,25 @@ status   active | suspended         work_mode, job_type, education, openings
 last_login_at                       experience_min, experience_max   (years)
 reset_token_hash, reset_token_expires   salary_min, salary_max      (LPA, nullable)
 created_at                          contact_name, contact_email, contact_phone
-                                    attachment_url
+                                    attachment_url, urgent
 contact_messages                    status active | closed, expires_at
 ──────────────────────              search_text (kept by trigger, trigram-indexed)
 id, name, email, topic, message     created_at, updated_at
 status open | resolved, created_at
                                     schema_migrations (version, applied_at)
+taxonomy_entries  (admin-added categories)
+──────────────────────
+id, industry, sub_role?, tag?, created_at
+
+job_stats  (per-job counters)       site_settings  (admin-editable)
+──────────────────────              ──────────────────────
+job_id (pk, fk → jobs, cascade)     key (pk), value (jsonb), updated_at
+views, contacts                     e.g. 'bulk_hiring_popup'
 ```
+
+`job_stats` is bumped by the `increment_job_stat(job, kind)` database function, so counting never touches the job row.
+
+**Kept in the visitor's browser (localStorage), not the database:** saved jobs (`joblay-saved-jobs`), recent searches (`joblay-recent-searches`), the chosen colour palette (`joblay-palette`) and when the bulk hiring popup was closed (`joblay-bulk-popup`). Job view/contact counts are de-duplicated per session with sessionStorage.
 
 Database rules: a job needs at least one contact field; work mode, job type and status are restricted to known values; experience and salary ranges must be ordered.
 
@@ -98,13 +111,14 @@ The filter sidebar changes the URL; Next.js re-renders the page on the server. T
 - `scripts/migrate.mjs` runs each pending file in a transaction under an advisory lock. It runs before `dev` (errors are reported, the server still starts) and before `build` (errors fail the deploy).
 - The app reads `schema_migrations` on startup and warns if it's behind `lib/schemaVersion.ts`. If a query hits a missing column, users see "being updated" instead of an error.
 
-**To change the schema:** add `supabase/migrations/0004_your_change.sql` (start from an existing file's header and footer, keep it idempotent), bump `SCHEMA_VERSION` to `"0004"`, update `lib/repository.ts` and `types/index.ts`, then run `npm run db:migrate`.
+**To change the schema:** add `supabase/migrations/0005_your_change.sql` (start from an existing file's header and footer, keep it idempotent), bump `SCHEMA_VERSION` to `"0005"`, update `lib/repository.ts` and `types/index.ts`, then run `npm run db:migrate`.
 
 ## Common changes
 
 | Change | Where |
 |---|---|
-| Add a city, industry, role or skill | `lib/data/filterHierarchy.ts` (values are stored as text, so renaming one orphans existing jobs) |
+| Add an industry, role or skill | Admins: Admin Panel → Categories (stored in `taxonomy_entries`). Built-in ones: `lib/data/filterHierarchy.ts`. Values are stored on jobs as text, so renaming one orphans existing jobs. Server code reads the merged list with `getTaxonomy()` from `lib/taxonomy.ts` and passes it to client components as a prop |
+| Add a city | `lib/data/filterHierarchy.ts` |
 | Add a filter | `lib/jobQuery.ts` (parse/serialise), `searchJobs` in `lib/repository.ts`, `components/jobs/FilterPanel.tsx`, chip label in `JobSearch.tsx` |
 | Add a job field | migration + `types/index.ts` + `lib/repository.ts` (row mapping) + `lib/validations.ts` + `lib/jobInput.ts` + `JobPostForm.tsx` |
 | Change an email | `lib/mail.ts` |

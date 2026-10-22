@@ -53,7 +53,7 @@ All parameters are optional. Multi-value parameters take comma-separated values.
 | `sort` | `salary` | `newest` (default), `salary` (highest first), `experience` (least first) |
 | `page` | `2` | Returns the first `page × 20` results (max page 25) |
 
-The allowed values for locations, industries, roles and skills are defined in [`lib/data/filterHierarchy.ts`](../lib/data/filterHierarchy.ts).
+The allowed values for locations, industries, roles and skills are defined in [`lib/data/filterHierarchy.ts`](../lib/data/filterHierarchy.ts), plus any industries, roles and skills admins add in Admin Panel → Categories.
 
 The same parameters work on the website, e.g. `https://yourdomain.com/?workMode=Remote&tags=AWS&salary=10`.
 
@@ -116,6 +116,7 @@ GET /api/jobs?location=Pune&experience=2&salary=5&sort=salary
 | `experienceMin`, `experienceMax` | integer | Years. `experienceMax` of 30 means "no upper limit" |
 | `salaryMin`, `salaryMax` | number or absent | Lakhs per annum. Absent = not disclosed |
 | `openings` | integer | |
+| `urgent` | boolean | Shows an "Urgent" badge. Optional on create/edit (default `false`) |
 | `criteria` | string[] | Requirements |
 | `contact` | `{ name?, email?, phone? }` | At least one is present. Phone is in E.164 format (`+91…`) |
 | `attachmentUrl` | string or absent | Public PDF/Word JD |
@@ -174,6 +175,12 @@ Rules:
 ```
 `close` hides the job; `reopen` and `renew` make it live for another 30 days. Owners, or admins for any job.
 
+### `POST /api/jobs/{id}/stats` — count a view or contact tap
+Public. Body `{ "kind": "view" }` or `{ "kind": "contact" }`. The site sends each at most once per job per browser session; the totals appear on the recruiter dashboard.
+
+### `GET /api/jobs/saved?ids=a,b` — saved jobs
+Public. The still-live jobs among up to 100 comma-separated ids (saved jobs are kept in the visitor's browser).
+
 ### `POST /api/uploads` — upload a JD attachment
 Multipart form with a `file` field: PDF, DOC or DOCX up to 5 MB. Returns `{ "url": "…" }` to send as `attachmentUrl`. Needs Supabase Storage.
 
@@ -196,7 +203,9 @@ When Cloudflare Turnstile is enabled, `register`, `login`, `forgot-password` and
 
 ## Contact
 
-`POST /api/contact` — `name`, `email`, `topic` (`general`, `report`, `recruiter`, `privacy`), `message`. Limited to 5 messages per IP per 10 minutes.
+`POST /api/contact` — `name`, `email`, `topic` (`general`, `report`, `recruiter`, `privacy`, `bulk`), `message`. Limited to 5 messages per IP per 10 minutes. The bulk hiring popup sends `topic: "bulk"`.
+
+`GET /api/popup` — the bulk hiring popup: `{ enabled, title, message, delaySeconds, updatedAt }` while an admin has it on, otherwise `{ enabled: false }`.
 
 ## Admin endpoints
 
@@ -211,6 +220,7 @@ Admin session required. Used by the admin panel; available for internal tools.
 | `PATCH /api/admin/messages/{id}` | `{ "status": "open" \| "resolved" }` |
 | `DELETE /api/admin/messages/{id}` | Delete a message |
 | `GET /api/admin/export` | Excel workbook (Summary, Jobs, Employers, Messages) |
+| `PUT /api/admin/popup` | `{ enabled, title, message, delaySeconds }` — the bulk hiring popup |
 
 ## Other public URLs
 

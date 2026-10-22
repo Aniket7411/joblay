@@ -4,11 +4,13 @@ import { mockStore } from "@/lib/data/mockStore";
 import { hashToken } from "@/lib/auth/password";
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
 import { PAGE_SIZE, type JobQuery } from "@/lib/jobQuery";
+import type { TaxonomyEntry } from "@/lib/data/filterHierarchy";
 import type {
   AccountStatus,
   ContactMessage,
   JobPage,
   JobPosting,
+  JobStats,
   JobStatus,
   Recruiter,
   RecruiterSummary,
@@ -111,6 +113,7 @@ interface JobRow {
   salary_max: number | string | null;
   education: string;
   openings: number;
+  urgent: boolean | null;
   status: JobStatus;
   expires_at: string;
   created_at: string;
@@ -127,11 +130,19 @@ interface MessageRow {
   created_at: string;
 }
 
+interface TaxonomyRow {
+  id: string;
+  industry: string;
+  sub_role: string | null;
+  tag: string | null;
+  created_at: string;
+}
+
 const RECRUITER_PUBLIC_COLUMNS =
   "id, name, email, company, role, status, last_login_at, created_at";
 const RECRUITER_COLUMNS = `${RECRUITER_PUBLIC_COLUMNS}, password_hash`;
 const JOB_COLUMNS =
-  "id, recruiter_id, title, company, location, job_profile, industry, sub_role, tags, description, criteria, contact_name, contact_email, contact_phone, attachment_url, work_mode, job_type, experience_min, experience_max, salary_min, salary_max, education, openings, status, expires_at, created_at, updated_at";
+  "id, recruiter_id, title, company, location, job_profile, industry, sub_role, tags, description, criteria, contact_name, contact_email, contact_phone, attachment_url, work_mode, job_type, experience_min, experience_max, salary_min, salary_max, education, openings, urgent, status, expires_at, created_at, updated_at";
 
 const iso = (v: string | null | undefined) =>
   v ? new Date(v).toISOString() : undefined;
@@ -181,6 +192,7 @@ function toJob(row: JobRow): JobPosting {
     salaryMax: row.salary_max === null ? undefined : Number(row.salary_max),
     education: row.education,
     openings: row.openings,
+    urgent: row.urgent ?? false,
     status: row.status,
     expiresAt: new Date(row.expires_at).toISOString(),
     createdAt: new Date(row.created_at).toISOString(),
@@ -211,6 +223,7 @@ function jobToRow(input: JobInput) {
     salary_max: input.salaryMax ?? null,
     education: input.education,
     openings: input.openings,
+    urgent: input.urgent ?? false,
   };
 }
 
@@ -222,6 +235,16 @@ function toMessage(row: MessageRow): ContactMessage {
     topic: row.topic,
     message: row.message,
     status: row.status,
+    createdAt: new Date(row.created_at).toISOString(),
+  };
+}
+
+function toTaxonomyEntry(row: TaxonomyRow): TaxonomyEntry {
+  return {
+    id: row.id,
+    industry: row.industry,
+    subRole: row.sub_role ?? undefined,
+    tag: row.tag ?? undefined,
     createdAt: new Date(row.created_at).toISOString(),
   };
 }
@@ -545,6 +568,34 @@ export async function getJobById(id: string): Promise<JobPosting | null> {
   return mockStore.jobs.find((j) => j.id === id) ?? null;
 }
 
+/**
+ * The live jobs among these ids (saved jobs list), newest first. Closed,
+ * expired and suspended-employer jobs are left out.
+ */
+export async function getLiveJobsByIds(ids: string[]): Promise<JobPosting[]> {
+  if (!ids.length) return [];
+  const sb = db();
+  if (sb) {
+    const valid = ids.filter(isUuid);
+    if (!valid.length) return [];
+    const { data, error } = await sb
+      .from("jobs")
+      .select(`${JOB_COLUMNS}, recruiters!inner(status)`)
+      .in("id", valid)
+      .eq("status", "active")
+      .gt("expires_at", new Date().toISOString())
+      .eq("recruiters.status", "active")
+      .order("created_at", { ascending: false })
+      .returns<JobRow[]>();
+    if (error) throw dbError(error);
+    return data.map(toJob);
+  }
+  const now = Date.now();
+  return mockStore.jobs
+    .filter((j) => ids.includes(j.id) && isJobLive(j, now) && mockRecruiter(j.recruiterId)?.status !== "suspended")
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
 export async function createJob(input: NewJob): Promise<JobPosting> {
   const sb = db();
   if (sb) {
@@ -819,4 +870,155 @@ export async function adminDeleteMessage(id: string): Promise<boolean> {
   if (idx === -1) return false;
   mockStore.messages.splice(idx, 1);
   return true;
+}
+
+/* ------------------------------------------------------------------ */
+/* Taxonomy (admin-added industries, roles, skills)                    */
+/* ------------------------------------------------------------------ */
+
+export async function listTaxonomyEntries(): Promise<TaxonomyEntry[]> {
+  const sb = db();
+  if (sb) {
+    const { data, error } = await sb
+      .from("taxonomy_entries")
+      .select("id, industry, sub_role, tag, created_at")
+      .order("created_at", { ascending: true })
+      .limit(5000)
+      .returns<TaxonomyRow[]>();
+    if (error) throw dbError(error);
+    return data.map(toTaxonomyEntry);
+  }
+  return [...mockStore.taxonomy];
+}
+
+/** Adds an entry. Callers check the parent exists and the name is new. */
+export async function createTaxonomyEntry(input: {
+  industry: string;
+  subRole?: string;
+  tag?: string;
+}): Promise<TaxonomyEntry> {
+  const sb = db();
+  if (sb) {
+    const { data, error } = await sb
+      .from("taxonomy_entries")
+      .insert({ industry: input.industry, sub_role: input.subRole ?? null, tag: input.tag ?? null })
+      .select("id, industry, sub_role, tag, created_at")
+      .single<TaxonomyRow>();
+    if (error) throw dbError(error);
+    return toTaxonomyEntry(data);
+  }
+  const entry: TaxonomyEntry = {
+    ...input,
+    id: `tax-${randomUUID().slice(0, 8)}`,
+    createdAt: new Date().toISOString(),
+  };
+  mockStore.taxonomy.push(entry);
+  return entry;
+}
+
+/**
+ * Removes an entry and everything added beneath it (an industry's roles and
+ * skills, a role's skills). Returns the ids removed; empty if not found.
+ */
+export async function deleteTaxonomyEntry(id: string): Promise<string[]> {
+  const sb = db();
+  if (sb) {
+    if (!isUuid(id)) return [];
+    const { data: row, error } = await sb
+      .from("taxonomy_entries")
+      .select("id, industry, sub_role, tag, created_at")
+      .eq("id", id)
+      .maybeSingle<TaxonomyRow>();
+    if (error) throw dbError(error);
+    if (!row) return [];
+    let del = sb.from("taxonomy_entries").delete();
+    if (row.tag) del = del.eq("id", id);
+    else if (row.sub_role) del = del.eq("industry", row.industry).eq("sub_role", row.sub_role);
+    else del = del.eq("industry", row.industry);
+    const { data, error: delError } = await del.select("id");
+    if (delError) throw dbError(delError);
+    return data.map((r) => r.id as string);
+  }
+  const target = mockStore.taxonomy.find((e) => e.id === id);
+  if (!target) return [];
+  const doomed = mockStore.taxonomy.filter((e) =>
+    target.tag
+      ? e.id === id
+      : e.industry === target.industry && (!target.subRole || e.subRole === target.subRole)
+  );
+  mockStore.taxonomy = mockStore.taxonomy.filter((e) => !doomed.includes(e));
+  return doomed.map((e) => e.id);
+}
+
+/* ------------------------------------------------------------------ */
+/* Job stats (views and contact taps)                                  */
+/* ------------------------------------------------------------------ */
+
+export type StatKind = "view" | "contact";
+
+/** Adds one view or contact tap to a job. Best effort: never throws. */
+export async function incrementJobStat(id: string, kind: StatKind): Promise<void> {
+  try {
+    const sb = db();
+    if (sb) {
+      if (!isUuid(id)) return;
+      const { error } = await sb.rpc("increment_job_stat", { p_job: id, p_kind: kind });
+      if (error) console.error("[jobStats]", error.message);
+      return;
+    }
+    if (!mockStore.jobs.some((j) => j.id === id)) return;
+    const s = (mockStore.jobStats[id] ??= { views: 0, contacts: 0 });
+    if (kind === "view") s.views++;
+    else s.contacts++;
+  } catch (err) {
+    console.error("[jobStats]", err instanceof Error ? err.message : err);
+  }
+}
+
+/** Stats for these jobs, keyed by job id (jobs with none are left out). */
+export async function getJobStats(ids: string[]): Promise<Record<string, JobStats>> {
+  if (!ids.length) return {};
+  const sb = db();
+  if (sb) {
+    const valid = ids.filter(isUuid);
+    if (!valid.length) return {};
+    const { data, error } = await sb
+      .from("job_stats")
+      .select("job_id, views, contacts")
+      .in("job_id", valid)
+      .returns<{ job_id: string; views: number; contacts: number }[]>();
+    if (error) throw dbError(error);
+    return Object.fromEntries(data.map((r) => [r.job_id, { views: r.views, contacts: r.contacts }]));
+  }
+  return Object.fromEntries(ids.filter((id) => mockStore.jobStats[id]).map((id) => [id, { ...mockStore.jobStats[id] }]));
+}
+
+/* ------------------------------------------------------------------ */
+/* Site settings (admin-editable JSON values)                          */
+/* ------------------------------------------------------------------ */
+
+export async function getSetting<T>(key: string): Promise<T | null> {
+  const sb = db();
+  if (sb) {
+    const { data, error } = await sb
+      .from("site_settings")
+      .select("value")
+      .eq("key", key)
+      .maybeSingle<{ value: T }>();
+    if (error) throw dbError(error);
+    return data?.value ?? null;
+  }
+  return (mockStore.settings[key] as T | undefined) ?? null;
+}
+
+export async function setSetting<T>(key: string, value: T): Promise<void> {
+  const sb = db();
+  if (sb) {
+    const { error } = await sb
+      .from("site_settings")
+      .upsert({ key, value, updated_at: new Date().toISOString() });
+    if (error) throw dbError(error);
+    return;
+  }
+  mockStore.settings[key] = value;
 }

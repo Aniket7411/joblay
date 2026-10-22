@@ -6,13 +6,13 @@ import {
   educationLevels,
   getNicheTags,
   getSubRoles,
-  industries,
   jobProfiles,
   jobTypes,
   locations,
   postedWithinOptions,
   salaryOptions,
   workModes,
+  type Taxonomy,
 } from "@/lib/data/filterHierarchy";
 import type { JobQuery } from "@/lib/jobQuery";
 import { cn } from "@/lib/utils";
@@ -24,9 +24,11 @@ const experienceChoices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 15, 20];
 /** Every search filter. Each change is applied immediately via `onChange`. */
 export function FilterPanel({
   query,
+  taxonomy,
   onChange,
 }: {
   query: JobQuery;
+  taxonomy: Taxonomy;
   onChange: (next: Partial<JobQuery>) => void;
 }) {
   const toggle = (key: ListKey, value: string) => {
@@ -36,25 +38,25 @@ export function FilterPanel({
 
     // Keep the industry → sub-role → skill chain consistent.
     if (key === "industry") {
-      const roles = new Set(next.flatMap((i) => getSubRoles(i)));
+      const roles = new Set(next.flatMap((i) => getSubRoles(i, taxonomy)));
       patch.subRole = query.subRole.filter((r) => roles.has(r));
     }
     if (key === "industry" || key === "subRole") {
       const inds = key === "industry" ? next : query.industry;
       const roles = key === "subRole" ? next : (patch.subRole ?? query.subRole);
-      const tags = new Set(inds.flatMap((i) => roles.flatMap((r) => getNicheTags(i, r))));
+      const tags = new Set(inds.flatMap((i) => roles.flatMap((r) => getNicheTags(i, r, taxonomy))));
       patch.tags = query.tags.filter((t) => tags.has(t));
     }
     onChange(patch);
   };
 
   const subRoleGroups = query.industry
-    .map((industry) => ({ industry, roles: getSubRoles(industry) }))
+    .map((industry) => ({ industry, roles: getSubRoles(industry, taxonomy) }))
     .filter((g) => g.roles.length);
   const tagGroups = query.industry.flatMap((industry) =>
     query.subRole
-      .filter((r) => getSubRoles(industry).includes(r))
-      .map((role) => ({ label: role, tags: getNicheTags(industry, role) }))
+      .filter((r) => getSubRoles(industry, taxonomy).includes(r))
+      .map((role) => ({ label: role, tags: getNicheTags(industry, role, taxonomy) }))
   );
 
   return (
@@ -104,7 +106,7 @@ export function FilterPanel({
 
       <Section title="Industry & role" count={query.industry.length + query.subRole.length + query.tags.length}>
         <SearchableChecklist
-          options={industries}
+          options={Object.keys(taxonomy)}
           selected={query.industry}
           onToggle={(v) => toggle("industry", v)}
           placeholder="Search industry"

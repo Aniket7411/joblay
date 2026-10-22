@@ -8,6 +8,7 @@ import { jobToFormValues } from "@/lib/jobInput";
 import { getJobById, listJobs } from "@/lib/repository";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { isAiEnabled } from "@/lib/ai/parseJd";
+import { getTaxonomy } from "@/lib/taxonomy";
 import type { JobPostFormData } from "@/lib/validations";
 
 export const metadata = {
@@ -71,6 +72,7 @@ export default async function PostJobPage({
         </p>
       </motion.div>
       <JobPostForm
+        taxonomy={await getTaxonomy()}
         uploadsEnabled={isSupabaseConfigured()}
         aiEnabled={isAiEnabled()}
         initialValues={initialValues}

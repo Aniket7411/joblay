@@ -12,14 +12,18 @@ import {
   MapPin,
   Paperclip,
   Share2,
+  ShieldAlert,
   Users,
 } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { ContactActions } from "@/components/jobs/ContactActions";
+import { JobCard, JobHighlights } from "@/components/jobs/JobCard";
+import { CopyLinkButton, TrackJobView } from "@/components/jobs/JobPageExtras";
+import { SaveJobButton } from "@/components/jobs/SaveJobButton";
 import { getCurrentRecruiter } from "@/lib/auth/current";
-import { formatExperience, formatSalary, postedAgo } from "@/lib/jobQuery";
-import { findRecruiterById, getJobById, isJobLive } from "@/lib/repository";
+import { emptyJobQuery, formatExperience, formatSalary, postedAgo } from "@/lib/jobQuery";
+import { findRecruiterById, getJobById, isJobLive, searchJobs } from "@/lib/repository";
 import { isPublicSiteUrl, siteUrl } from "@/lib/siteUrl";
 import type { JobPosting } from "@/types";
 
@@ -35,6 +39,20 @@ async function loadJob(id: string) {
     if (viewer?.role !== "admin") return null;
   }
   return job;
+}
+
+/** Up to 4 other live jobs in the same role, topped up from the same industry. */
+async function similarJobs(job: JobPosting): Promise<JobPosting[]> {
+  try {
+    const others = (jobs: JobPosting[]) => jobs.filter((j) => j.id !== job.id);
+    const sameRole = others((await searchJobs({ ...emptyJobQuery, industry: [job.industry], subRole: [job.subRole] })).jobs);
+    if (sameRole.length >= 4) return sameRole.slice(0, 4);
+    const sameIndustry = others((await searchJobs({ ...emptyJobQuery, industry: [job.industry] })).jobs);
+    const seen = new Set(sameRole.map((j) => j.id));
+    return [...sameRole, ...sameIndustry.filter((j) => !seen.has(j.id))].slice(0, 4);
+  } catch {
+    return []; // a nice-to-have; never break the job page
+  }
 }
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
@@ -59,6 +77,7 @@ export default async function JobPage({ params }: { params: Params }) {
   // eslint-disable-next-line react-hooks/purity -- request time
   const now = Date.now();
   const live = isJobLive(job, now);
+  const similar = await similarJobs(job);
   const share = `https://wa.me/?text=${encodeURIComponent(`${job.title} at ${job.company} (${job.location}) — ${url}`)}`;
 
   const facts = [
@@ -80,10 +99,15 @@ export default async function JobPage({ params }: { params: Params }) {
         />
       )}
 
-      <Link href="/" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-6">
-        <ArrowLeft className="h-4 w-4" />
-        All jobs
-      </Link>
+      {live && <TrackJobView jobId={job.id} />}
+
+      <div className="flex items-center justify-between gap-3 mb-6">
+        <Link href="/" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="h-4 w-4" />
+          All jobs
+        </Link>
+        {live && <SaveJobButton jobId={job.id} withLabel />}
+      </div>
 
       {!live && (
         <div className="mb-6 rounded-xl border border-border bg-muted/60 px-4 py-3 text-sm">
@@ -97,6 +121,9 @@ export default async function JobPage({ params }: { params: Params }) {
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_20rem] gap-6">
         <div className="space-y-6 min-w-0">
           <div>
+            <div className="flex flex-wrap gap-1.5 empty:hidden mb-2">
+              <JobHighlights job={job} now={now} />
+            </div>
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">{job.title}</h1>
             <p className="mt-1 text-lg text-muted-foreground">{job.company}</p>
             <div className="flex flex-wrap gap-1.5 mt-4">
@@ -155,7 +182,7 @@ export default async function JobPage({ params }: { params: Params }) {
             <h2 className="font-semibold mb-1">Contact the recruiter</h2>
             {job.contact.name && <p className="text-sm text-muted-foreground mb-3">{job.contact.name}</p>}
             {live ? (
-              <ContactActions contact={job.contact} jobTitle={job.title} />
+              <ContactActions jobId={job.id} contact={job.contact} jobTitle={job.title} />
             ) : (
               <p className="text-sm text-muted-foreground">Contact details are hidden for closed jobs.</p>
             )}
@@ -175,17 +202,38 @@ export default async function JobPage({ params }: { params: Params }) {
                 <Share2 className="h-4 w-4" />
                 Share on WhatsApp
               </a>
+              <CopyLinkButton url={url} />
               <Link href={`/contact?topic=report&job=${job.id}`} className="flex items-center gap-2 text-muted-foreground hover:text-foreground">
                 <Flag className="h-4 w-4" />
                 Report this job
               </Link>
             </div>
           </Card>
-          <p className="text-xs text-muted-foreground px-1">
-            Joblay never charges candidates. Never pay anyone for a job — <Link href="/safety" className="underline">safety tips</Link>.
-          </p>
+          <div className="flex gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm">
+            <ShieldAlert className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div>
+              <p className="font-semibold">Stay safe</p>
+              <p className="mt-0.5 text-muted-foreground">
+                Joblay never charges candidates. Never pay anyone for a job, training or &ldquo;registration&rdquo;.{" "}
+                <Link href="/safety" className="font-medium text-foreground underline underline-offset-2">
+                  Safety tips
+                </Link>
+              </p>
+            </div>
+          </div>
         </aside>
       </div>
+
+      {similar.length > 0 && (
+        <section className="mt-12">
+          <h2 className="font-semibold text-xl mb-4">Similar jobs</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {similar.map((j) => (
+              <JobCard key={j.id} job={j} now={now} />
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

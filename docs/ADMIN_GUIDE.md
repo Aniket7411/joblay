@@ -34,9 +34,23 @@ Every recruiter and admin account, with company, number of jobs, join date and l
 You can't suspend, demote or delete your own account, and admin accounts can't be deleted from the panel.
 
 ### Messages
-Everything sent through the Contact page, including **job reports** (highlighted). Each message is also emailed to the site inbox.
+Everything sent through the Contact page, including **job reports** (highlighted) and **bulk hiring enquiries** from the popup (green). Each message is also emailed to the site inbox. A bulk hiring enquiry lists the company, phone number, number of people to hire, city and any notes.
 - **Reply** opens your email app addressed to the sender.
 - **Resolve** marks it done (filter by Open / Resolved). **Delete** removes it.
+
+### Categories
+Add new **industries**, **roles** (under an industry) and **skills** (under a role) without a developer. Pick what to add, choose its parent, type the name and press **Add**. It shows up immediately in the candidate filters, the Post a Job form and AI auto-fill. The form lists what already exists, so you can check for near-duplicates first.
+
+- Names are 2-60 characters and can't contain commas.
+- The list on the right shows only what admins added, with how many jobs use each one. **Remove** deletes it plus anything added under it. Jobs already using it stay live, but candidates can no longer filter by it.
+- The built-in industries can't be removed here **(developer: `lib/data/filterHierarchy.ts`)**.
+
+### Popup
+A **bulk hiring popup** that asks employers hiring many people to leave their details. It's **off** until you switch it on.
+- **The switch** turns it on or off for all visitors immediately.
+- Edit the **title**, **message** and **how many seconds** visitors spend on a page before it appears, then **Save changes**. **Preview** shows exactly what visitors will see (nothing is sent from the preview).
+- It never appears on the admin, dashboard, sign-in or contact pages.
+- A visitor who closes it won't see it again for 3 days, or 30 days after sending an enquiry. Saving changes (or switching it on again) shows it again to everyone.
 
 ### Download Excel
 One file with four sheets: **Summary** (totals and breakdowns), **Jobs** (every field), **Employers**, **Messages**. Opens in Excel or Google Sheets.

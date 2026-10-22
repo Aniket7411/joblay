@@ -27,6 +27,8 @@ export interface JobPosting {
   salaryMax?: number;
   education: string;
   openings: number;
+  /** Recruiter flagged it "Urgent hiring". */
+  urgent?: boolean;
   status: JobStatus;
   expiresAt: string;
   createdAt: string;
@@ -97,6 +99,22 @@ export interface ContactMessage {
   message: string;
   status: "open" | "resolved";
   createdAt: string;
+}
+
+/** Per-job engagement, shown on the recruiter dashboard. */
+export interface JobStats {
+  views: number;
+  contacts: number;
+}
+
+/** The admin-controlled "bulk hiring" popup shown to visitors. */
+export interface BulkHiringPopup {
+  enabled: boolean;
+  title: string;
+  message: string;
+  /** Seconds after a page opens before it appears. */
+  delaySeconds: number;
+  updatedAt?: string;
 }
 
 export interface AdminOverview {

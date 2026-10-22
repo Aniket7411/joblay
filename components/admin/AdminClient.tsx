@@ -15,13 +15,16 @@ import {
   KeyRound,
   LayoutDashboard,
   Mail,
+  Megaphone,
   Paperclip,
   Pencil,
   Phone,
+  Plus,
   RotateCcw,
   Search,
   Shield,
   ShieldOff,
+  Tags,
   Trash2,
   UserPlus,
   Users,
@@ -29,19 +32,27 @@ import {
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { industries, locations } from "@/lib/data/filterHierarchy";
+import { BulkHiringModal } from "@/components/layout/BulkHiringPopup";
+import {
+  industryHierarchy,
+  locations,
+  mergeTaxonomy,
+  type Taxonomy,
+  type TaxonomyEntry,
+} from "@/lib/data/filterHierarchy";
 import { cn } from "@/lib/utils";
 import { formatExperience, formatSalary } from "@/lib/jobQuery";
 import { contactTopics } from "@/lib/validations";
 import type {
   AdminOverview,
+  BulkHiringPopup,
   ContactMessage,
   JobPosting,
   Recruiter,
   RecruiterSummary,
 } from "@/types";
 
-type Tab = "overview" | "jobs" | "employers" | "messages";
+type Tab = "overview" | "jobs" | "employers" | "messages" | "categories" | "popup";
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -73,12 +84,21 @@ async function api(url: string, method: string, body?: unknown) {
 export function AdminClient({
   admin,
   initialData,
+  initialCategories,
+  initialPopup,
 }: {
   admin: Recruiter;
   initialData: AdminOverview;
+  /** Admin-added industries, roles and skills. */
+  initialCategories: TaxonomyEntry[];
+  /** The bulk hiring popup settings. */
+  initialPopup: BulkHiringPopup;
 }) {
   const router = useRouter();
   const [data, setData] = useState(initialData);
+  const [categories, setCategories] = useState(initialCategories);
+  const [popup, setPopup] = useState(initialPopup);
+  const taxonomy = useMemo(() => mergeTaxonomy(categories), [categories]);
   const [tab, setTab] = useState<Tab>("overview");
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
   const [weekAgo] = useState(() => Date.now() - WEEK_MS);
@@ -165,6 +185,43 @@ export function AdminClient({
     setData((prev) => ({ ...prev, messages: prev.messages.filter((x) => x.id !== m.id) }));
   };
 
+  const addCategory = async (input: { industry: string; subRole?: string; tag?: string }) => {
+    const json = await api("/api/admin/taxonomy", "POST", input);
+    setNotice({ ok: json.success, text: json.message });
+    if (!json.success) return false;
+    setCategories((prev) => [...prev, json.data as TaxonomyEntry]);
+    return true;
+  };
+
+  const deleteCategory = async (entry: TaxonomyEntry, jobsUsing: number) => {
+    const what = entry.tag
+      ? `skill "${entry.tag}"`
+      : entry.subRole
+        ? `role "${entry.subRole}" and the skills added under it`
+        : `industry "${entry.industry}" and the roles and skills added under it`;
+    const jobsNote = jobsUsing
+      ? `\n\n${jobsUsing} job${jobsUsing === 1 ? " uses" : "s use"} it. They stay live, but candidates won't be able to filter by it.`
+      : "";
+    if (!confirm(`Remove the ${what}?${jobsNote}`)) return;
+    const json = await api(`/api/admin/taxonomy/${entry.id}`, "DELETE");
+    setNotice({ ok: json.success, text: json.message });
+    if (!json.success) return;
+    const removed = new Set((json.data as { removed: string[] }).removed);
+    setCategories((prev) => prev.filter((c) => !removed.has(c.id)));
+  };
+
+  const savePopup = async (next: BulkHiringPopup) => {
+    const json = await api("/api/admin/popup", "PUT", {
+      enabled: next.enabled,
+      title: next.title,
+      message: next.message,
+      delaySeconds: next.delaySeconds,
+    });
+    setNotice({ ok: json.success, text: json.message });
+    if (json.success) setPopup(json.data as BulkHiringPopup);
+    return json.success;
+  };
+
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
     router.push("/login");
@@ -179,6 +236,8 @@ export function AdminClient({
     { id: "jobs", label: "Jobs", icon: Briefcase, count: data.jobs.length },
     { id: "employers", label: "Employers", icon: Users, count: data.recruiters.length },
     { id: "messages", label: "Messages", icon: Inbox, count: openMessages },
+    { id: "categories", label: "Categories", icon: Tags, count: categories.length },
+    { id: "popup", label: popup.enabled ? "Popup · On" : "Popup", icon: Megaphone },
   ];
 
   return (
@@ -267,7 +326,12 @@ export function AdminClient({
           onTab={setTab}
         />
       ) : tab === "jobs" ? (
-        <JobsTab jobs={data.jobs} recruiterById={recruiterById} onDelete={deleteJob} />
+        <JobsTab
+          jobs={data.jobs}
+          industries={Object.keys(taxonomy)}
+          recruiterById={recruiterById}
+          onDelete={deleteJob}
+        />
       ) : tab === "employers" ? (
         <EmployersTab
           recruiters={data.recruiters}
@@ -277,11 +341,21 @@ export function AdminClient({
           onReset={sendReset}
           onDelete={deleteEmployer}
         />
-      ) : (
+      ) : tab === "messages" ? (
         <MessagesTab
           messages={data.messages}
           onStatus={setMessageStatus}
           onDelete={deleteMessage}
+        />
+      ) : tab === "popup" ? (
+        <PopupTab popup={popup} onSave={savePopup} />
+      ) : (
+        <CategoriesTab
+          taxonomy={taxonomy}
+          entries={categories}
+          jobs={data.jobs}
+          onAdd={addCategory}
+          onDelete={deleteCategory}
         />
       )}
     </div>
@@ -424,10 +498,12 @@ function BarList({ title, items }: { title: string; items: [string, number][] })
 
 function JobsTab({
   jobs,
+  industries,
   recruiterById,
   onDelete,
 }: {
   jobs: JobPosting[];
+  industries: string[];
   recruiterById: Map<string, RecruiterSummary>;
   onDelete: (job: JobPosting) => void;
 }) {
@@ -801,7 +877,9 @@ function MessagesTab({
               <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant={m.topic === "report" ? "saffron" : "outline"}>{topicLabel(m.topic)}</Badge>
+                    <Badge variant={m.topic === "report" ? "saffron" : m.topic === "bulk" ? "green" : "outline"}>
+                      {topicLabel(m.topic)}
+                    </Badge>
                     {m.status === "resolved" && <Badge variant="green">Resolved</Badge>}
                     <span className="text-xs text-muted-foreground">{fmtDateTime(m.createdAt)}</span>
                   </div>
@@ -839,6 +917,357 @@ function MessagesTab({
         </div>
       )}
     </div>
+  );
+}
+
+/* ================================================================== */
+/* Popup (bulk hiring)                                                 */
+/* ================================================================== */
+
+function PopupTab({
+  popup,
+  onSave,
+}: {
+  popup: BulkHiringPopup;
+  onSave: (next: BulkHiringPopup) => Promise<boolean>;
+}) {
+  const [draft, setDraft] = useState(popup);
+  const [saving, setSaving] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const dirty =
+    draft.title !== popup.title || draft.message !== popup.message || draft.delaySeconds !== popup.delaySeconds;
+
+  const save = async (next: BulkHiringPopup) => {
+    setSaving(true);
+    const saved = await onSave(next);
+    setSaving(false);
+    if (saved) setDraft(next);
+  };
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,32rem)_1fr] gap-6 items-start">
+      <Card className="p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="font-semibold">Bulk hiring popup</h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              Asks visitors who hire in bulk to leave their details. Enquiries arrive in Messages as
+              &ldquo;Bulk hiring enquiry&rdquo;. Not shown on the admin, dashboard, sign-in or contact pages.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={popup.enabled}
+            aria-label="Show popup to visitors"
+            disabled={saving}
+            onClick={() => save({ ...draft, enabled: !popup.enabled })}
+            className={cn(
+              "relative h-7 w-12 shrink-0 rounded-full transition-colors disabled:opacity-50",
+              popup.enabled ? "bg-india-green" : "bg-muted border border-border"
+            )}
+          >
+            <span
+              className={cn(
+                "absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all",
+                popup.enabled ? "left-6" : "left-1"
+              )}
+            />
+          </button>
+        </div>
+        <p className={cn("mt-3 text-sm font-medium", popup.enabled ? "text-india-green-dark dark:text-india-green" : "text-muted-foreground")}>
+          {popup.enabled ? "● Live — visitors see it" : "○ Off — nobody sees it"}
+        </p>
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            save({ ...draft, enabled: popup.enabled });
+          }}
+          className="mt-5 space-y-3 border-t border-border pt-5"
+        >
+          <label className="block">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Title</span>
+            <input
+              value={draft.title}
+              onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+              maxLength={80}
+              className="mt-1 w-full rounded-xl border border-border bg-surface px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-saffron/50 focus:border-saffron"
+            />
+          </label>
+          <label className="block">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Message</span>
+            <textarea
+              value={draft.message}
+              onChange={(e) => setDraft({ ...draft, message: e.target.value })}
+              maxLength={300}
+              rows={3}
+              className="mt-1 w-full rounded-xl border border-border bg-surface px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-saffron/50 focus:border-saffron"
+            />
+          </label>
+          <label className="block">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Show after (seconds on the page)
+            </span>
+            <input
+              type="number"
+              min={0}
+              max={120}
+              value={draft.delaySeconds}
+              onChange={(e) => setDraft({ ...draft, delaySeconds: Math.max(0, Math.min(120, Number(e.target.value) || 0)) })}
+              className="mt-1 w-32 rounded-xl border border-border bg-surface px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-saffron/50 focus:border-saffron"
+            />
+          </label>
+          <div className="flex flex-wrap gap-2 pt-1">
+            <Button type="submit" disabled={!dirty || saving}>
+              {saving ? "Saving..." : "Save changes"}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setPreviewing(true)}>
+              Preview
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            A visitor who closes it won&apos;t see it again for 3 days (30 days after sending an enquiry). Saving
+            changes shows it again to everyone.
+          </p>
+        </form>
+      </Card>
+
+      <BulkHiringModal popup={draft} open={previewing} onClose={() => setPreviewing(false)} preview />
+    </div>
+  );
+}
+
+/* ================================================================== */
+/* Categories                                                          */
+/* ================================================================== */
+
+type Level = "industry" | "role" | "skill";
+
+const levelLabel: Record<Level, string> = { industry: "Industry", role: "Role", skill: "Skill" };
+
+const levelOf = (e: TaxonomyEntry): Level => (e.tag ? "skill" : e.subRole ? "role" : "industry");
+
+function CategoriesTab({
+  taxonomy,
+  entries,
+  jobs,
+  onAdd,
+  onDelete,
+}: {
+  taxonomy: Taxonomy;
+  entries: TaxonomyEntry[];
+  jobs: JobPosting[];
+  onAdd: (input: { industry: string; subRole?: string; tag?: string }) => Promise<boolean>;
+  onDelete: (entry: TaxonomyEntry, jobsUsing: number) => void;
+}) {
+  const [level, setLevel] = useState<Level>("industry");
+  const [industry, setIndustry] = useState("");
+  const [role, setRole] = useState("");
+  const [value, setValue] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [filter, setFilter] = useState("");
+
+  const industryNames = Object.keys(taxonomy);
+  const roleNames = industry ? Object.keys(taxonomy[industry] ?? {}) : [];
+  // What already exists at the chosen level, so admins don't add duplicates.
+  const siblings =
+    level === "industry"
+      ? industryNames
+      : level === "role"
+        ? roleNames
+        : role
+          ? (taxonomy[industry]?.[role] ?? [])
+          : [];
+  const siblingsOf = level === "industry" ? "the list" : level === "role" ? industry : role;
+
+  const ready =
+    value.trim().length >= 2 && (level === "industry" || industry !== "") && (level !== "skill" || role !== "");
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ready || saving) return;
+    setSaving(true);
+    const name = value.trim();
+    const added = await onAdd(
+      level === "industry"
+        ? { industry: name }
+        : level === "role"
+          ? { industry, subRole: name }
+          : { industry, subRole: role, tag: name }
+    );
+    setSaving(false);
+    if (added) setValue("");
+  };
+
+  const jobsUsing = (e: TaxonomyEntry) =>
+    jobs.filter(
+      (j) =>
+        j.industry === e.industry &&
+        (!e.subRole || j.subRole === e.subRole) &&
+        (!e.tag || j.tags.includes(e.tag))
+    ).length;
+
+  const q = filter.trim().toLowerCase();
+  const shown = [...entries]
+    .reverse()
+    .filter((e) => !q || [e.industry, e.subRole, e.tag].join(" ").toLowerCase().includes(q));
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,26rem)_1fr] gap-6 items-start">
+      <Card className="p-5">
+        <h3 className="font-semibold">Add a category</h3>
+        <p className="text-sm text-muted-foreground mt-1">
+          New industries, roles and skills show up right away in the search filters, the job form and AI auto-fill.
+        </p>
+
+        <form onSubmit={submit} className="mt-4 space-y-3">
+          <div className="grid grid-cols-3 gap-1 rounded-xl border border-border bg-surface p-1" role="radiogroup" aria-label="What to add">
+            {(Object.keys(levelLabel) as Level[]).map((l) => (
+              <button
+                key={l}
+                type="button"
+                role="radio"
+                aria-checked={level === l}
+                onClick={() => setLevel(l)}
+                className={cn(
+                  "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
+                  level === l ? "bg-saffron text-white" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {levelLabel[l]}
+              </button>
+            ))}
+          </div>
+
+          {level !== "industry" && (
+            <FieldSelect
+              label="Industry"
+              value={industry}
+              onChange={(v) => {
+                setIndustry(v);
+                setRole("");
+              }}
+              options={industryNames}
+            />
+          )}
+          {level === "skill" && (
+            <FieldSelect label="Role" value={role} onChange={setRole} options={roleNames} disabled={!industry} />
+          )}
+
+          <label className="block">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              New {levelLabel[level].toLowerCase()} name
+            </span>
+            <input
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              maxLength={60}
+              placeholder={
+                level === "industry" ? "e.g. Pharmaceuticals" : level === "role" ? "e.g. Data Engineering" : "e.g. Snowflake"
+              }
+              className="mt-1 w-full rounded-xl border border-border bg-surface px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-saffron/50 focus:border-saffron"
+            />
+          </label>
+
+          <Button type="submit" disabled={!ready || saving} className="w-full">
+            <Plus className="h-4 w-4" />
+            {saving ? "Adding..." : `Add ${levelLabel[level].toLowerCase()}`}
+          </Button>
+        </form>
+
+        {siblings.length > 0 && (
+          <div className="mt-5 border-t border-border pt-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+              Already in {siblingsOf} ({siblings.length})
+            </p>
+            <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto">
+              {siblings.map((s) => (
+                <Badge key={s} variant="outline">{s}</Badge>
+              ))}
+            </div>
+          </div>
+        )}
+      </Card>
+
+      <div>
+        <div className="flex flex-col md:flex-row gap-2 mb-3">
+          <SearchBox value={filter} onChange={setFilter} placeholder="Search added categories..." />
+        </div>
+        <p className="text-sm text-muted-foreground mb-3">
+          {entries.length} added by admins · {Object.keys(industryHierarchy).length} built-in industries (built-in
+          ones can&apos;t be removed here)
+        </p>
+
+        {shown.length === 0 ? (
+          <Card className="p-10 text-center text-muted-foreground">
+            {entries.length === 0
+              ? "Nothing added yet. Use the form to add an industry, role or skill."
+              : "No matches."}
+          </Card>
+        ) : (
+          <Card className="divide-y divide-border">
+            {shown.map((e) => {
+              const using = jobsUsing(e);
+              const l = levelOf(e);
+              const label = e.tag ?? e.subRole ?? e.industry;
+              return (
+                <div key={e.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+                  <div className="min-w-0">
+                    <p className="flex flex-wrap items-center gap-2">
+                      <Badge variant={l === "industry" ? "saffron" : l === "role" ? "outline" : "green"}>
+                        {levelLabel[l]}
+                      </Badge>
+                      <span className="font-medium truncate">{label}</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1 truncate">
+                      {[e.industry, e.subRole, e.tag].filter(Boolean).join(" › ")} · added {fmtDate(e.createdAt)} ·{" "}
+                      {using} job{using === 1 ? "" : "s"}
+                    </p>
+                  </div>
+                  <Button variant="danger" size="sm" onClick={() => onDelete(e, using)} aria-label={`Remove ${label}`}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              );
+            })}
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FieldSelect({
+  label,
+  value,
+  onChange,
+  options,
+  disabled,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: readonly string[];
+  disabled?: boolean;
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        className="mt-1 w-full rounded-xl border border-border bg-surface px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-saffron/50 focus:border-saffron disabled:opacity-50"
+      >
+        <option value="">Choose {label.toLowerCase()}</option>
+        {options.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

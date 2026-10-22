@@ -5,6 +5,7 @@ import { notifyJobChanged } from "@/lib/indexing";
 import { parseJobBody } from "@/lib/jobInput";
 import { parseJobQuery } from "@/lib/jobQuery";
 import { createJob, searchJobs } from "@/lib/repository";
+import { getTaxonomy } from "@/lib/taxonomy";
 
 /**
  * Public job search. Every filter is optional; multi-value filters are
@@ -14,7 +15,7 @@ import { createJob, searchJobs } from "@/lib/repository";
  */
 export async function GET(request: Request) {
   try {
-    const query = parseJobQuery(new URL(request.url).searchParams);
+    const query = parseJobQuery(new URL(request.url).searchParams, Object.keys(await getTaxonomy()));
     const result = await searchJobs(query);
     return ok("Jobs fetched", result, {
       headers: { "Cache-Control": "public, s-maxage=30, stale-while-revalidate=120" },
@@ -29,7 +30,7 @@ export async function POST(request: Request) {
     const recruiter = await getCurrentRecruiter();
     if (!recruiter) return fail("Please sign in to post a job", 401);
 
-    const input = parseJobBody(await request.json());
+    const input = parseJobBody(await request.json(), await getTaxonomy());
     if (input instanceof NextResponse) return input;
 
     const job = await createJob({ ...input, recruiterId: recruiter.id });

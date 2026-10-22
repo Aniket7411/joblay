@@ -1,5 +1,6 @@
 import { randomBytes, scryptSync } from "node:crypto";
-import type { ContactMessage, JobPosting, Recruiter } from "@/types";
+import type { ContactMessage, JobPosting, JobStats, Recruiter } from "@/types";
+import type { TaxonomyEntry } from "./filterHierarchy";
 import { seedJobs } from "./jobs";
 
 /**
@@ -24,6 +25,9 @@ declare global {
         jobs: JobPosting[];
         recruiters: MockRecruiter[];
         messages: ContactMessage[];
+        taxonomy: TaxonomyEntry[];
+        jobStats: Record<string, JobStats>;
+        settings: Record<string, unknown>;
       }
     | undefined;
 }
@@ -54,6 +58,13 @@ const store = (global.joblayMockStore ??= {
     },
   ],
   messages: [],
+  taxonomy: [],
+  jobStats: {},
+  settings: {},
 });
+// A store created before these existed (dev hot-reload).
+store.taxonomy ??= [];
+store.jobStats ??= {};
+store.settings ??= {};
 
 export const mockStore = store;

@@ -3,13 +3,12 @@ import {
   educationLevels,
   getNicheTags,
   getSubRoles,
-  industries,
-  industryHierarchy,
   jobProfiles,
   jobTypes,
   locations,
   MAX_EXPERIENCE_YEARS,
   workModes,
+  type Taxonomy,
 } from "@/lib/data/filterHierarchy";
 import { normalizePhone } from "@/lib/phone";
 import type { JobPostFormData } from "@/lib/validations";
@@ -37,7 +36,7 @@ const nullableString = { type: "STRING", nullable: true };
 const nullableEnum = (values: readonly string[]) => ({ type: "STRING", enum: [...values], nullable: true });
 
 /** Gemini response schema (OpenAPI subset). */
-const responseSchema = {
+const responseSchema = (industries: readonly string[]) => ({
   type: "OBJECT",
   properties: {
     title: { type: "STRING" },
@@ -62,13 +61,13 @@ const responseSchema = {
     contactPhone: nullableString,
   },
   required: ["title", "description", "tags", "requirements"],
-};
+});
 
-const SYSTEM_PROMPT = `You extract structured fields from an Indian job description for a job board form.
+const systemPrompt = (taxonomy: Taxonomy) => `You extract structured fields from an Indian job description for a job board form.
 Rules:
 - Use only information in the text. If a field isn't stated, return null (or [] for lists). Never invent salary, contact details or company names.
 - location: the city from the allowed list. Map aliases (Bengaluru→Bangalore, Gurugram→Gurgaon, Bombay→Mumbai, Trivandrum→Thiruvananthapuram, New Delhi→Delhi). Use "Pan India" for multiple cities or anywhere in India.
-- industry, subRole and tags must come from this hierarchy (industry → subRole → tags): ${JSON.stringify(industryHierarchy)}
+- industry, subRole and tags must come from this hierarchy (industry → subRole → tags): ${JSON.stringify(taxonomy)}
   Pick the single best industry and subRole, then every matching tag under that subRole.
 - jobProfile (seniority): Fresher = 0–1 years, Junior = 1–3, Mid-Level = 3–6, Senior = 6–10, Lead/Manager/Director by title.
 - experience in whole years. "3+ years" → min 3, max null. "Freshers" → 0 and 1.
@@ -103,7 +102,7 @@ const aiResult = z.object({
 
 export type AiJobFields = Partial<JobPostFormData>;
 
-export async function parseJobDescription(text: string): Promise<AiJobFields> {
+export async function parseJobDescription(text: string, taxonomy: Taxonomy): Promise<AiJobFields> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new AiUnavailableError("AI is not configured");
   const model = process.env.GEMINI_MODEL || DEFAULT_MODEL;
@@ -114,9 +113,13 @@ export async function parseJobDescription(text: string): Promise<AiJobFields> {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": key },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        systemInstruction: { parts: [{ text: systemPrompt(taxonomy) }] },
         contents: [{ role: "user", parts: [{ text: `<jd>\n${text.slice(0, MAX_JD_CHARS)}\n</jd>` }] }],
-        generationConfig: { responseMimeType: "application/json", responseSchema, temperature: 0.1 },
+        generationConfig: {
+          responseMimeType: "application/json",
+          responseSchema: responseSchema(Object.keys(taxonomy)),
+          temperature: 0.1,
+        },
       }),
       signal: AbortSignal.timeout(30_000),
     }
@@ -141,7 +144,7 @@ export async function parseJobDescription(text: string): Promise<AiJobFields> {
   }
   const parsed = aiResult.safeParse(json);
   if (!parsed.success) throw new AiUnavailableError("Couldn't read that job description. Please fill the form manually.");
-  return toFormValues(parsed.data);
+  return toFormValues(parsed.data, taxonomy);
 }
 
 const oneOf = <T extends string>(list: readonly T[], v?: string | null): T | undefined =>
@@ -158,10 +161,10 @@ const lpa = (n?: number | null) =>
     : String(Math.round(n * 100) / 100);
 
 /** Keeps only values our form accepts. Exported for tests. */
-export function toFormValues(r: z.infer<typeof aiResult>): AiJobFields {
-  const industry = oneOf(industries, r.industry);
-  const subRole = industry && r.subRole && getSubRoles(industry).includes(r.subRole) ? r.subRole : undefined;
-  const allowedTags = industry && subRole ? getNicheTags(industry, subRole) : [];
+export function toFormValues(r: z.infer<typeof aiResult>, taxonomy: Taxonomy): AiJobFields {
+  const industry = oneOf(Object.keys(taxonomy), r.industry);
+  const subRole = industry && r.subRole && getSubRoles(industry, taxonomy).includes(r.subRole) ? r.subRole : undefined;
+  const allowedTags = industry && subRole ? getNicheTags(industry, subRole, taxonomy) : [];
   const tags = [...new Set(r.tags.filter((t) => allowedTags.includes(t)))];
 
   let expMin = clampYears(r.experienceMinYears);

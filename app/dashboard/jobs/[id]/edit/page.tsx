@@ -6,6 +6,7 @@ import { jobToFormValues } from "@/lib/jobInput";
 import { getJobById } from "@/lib/repository";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { isAiEnabled } from "@/lib/ai/parseJd";
+import { getTaxonomy } from "@/lib/taxonomy";
 
 export const metadata = { title: "Edit Job" };
 
@@ -37,6 +38,7 @@ export default async function EditJobPage({
         </p>
       </div>
       <JobPostForm
+        taxonomy={await getTaxonomy()}
         jobId={job.id}
         initialValues={jobToFormValues(job)}
         uploadsEnabled={isSupabaseConfigured()}

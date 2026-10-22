@@ -15,12 +15,12 @@ import {
   educationLevels,
   getNicheTags,
   getSubRoles,
-  industries,
   jobProfiles,
   jobTypes,
   locations,
   MAX_EXPERIENCE_YEARS,
   workModes,
+  type Taxonomy,
 } from "@/lib/data/filterHierarchy";
 
 const experienceOptions = Array.from({ length: MAX_EXPERIENCE_YEARS + 1 }, (_, i) => String(i));
@@ -36,11 +36,14 @@ const createDefaults: Partial<JobPostFormData> = {
   experienceMin: "0",
   experienceMax: String(MAX_EXPERIENCE_YEARS),
   openings: "1",
+  urgent: false,
 };
 import { jobPostSchema, type JobPostFormData } from "@/lib/validations";
 import { cn } from "@/lib/utils";
 
 interface JobPostFormProps {
+  /** Industries → roles → skills, including admin additions. */
+  taxonomy: Taxonomy;
   uploadsEnabled?: boolean;
   /** Edit mode: the job being edited and its current values. */
   jobId?: string;
@@ -52,6 +55,7 @@ interface JobPostFormProps {
 }
 
 export function JobPostForm({
+  taxonomy,
   uploadsEnabled = false,
   jobId,
   initialValues,
@@ -91,11 +95,11 @@ export function JobPostForm({
   // an AI-suggested sub-role is set on the render after.
   const [pendingSubRole, setPendingSubRole] = useState<string | null>(null);
   useEffect(() => {
-    if (pendingSubRole && getSubRoles(industry).includes(pendingSubRole)) {
+    if (pendingSubRole && getSubRoles(industry, taxonomy).includes(pendingSubRole)) {
       setValue("subRole", pendingSubRole);
       setPendingSubRole(null);
     }
-  }, [industry, pendingSubRole, setValue]);
+  }, [industry, pendingSubRole, setValue, taxonomy]);
 
   const applyAiFields = (fields: Partial<JobPostFormData>) => {
     const { subRole: aiSubRole, tags, ...rest } = fields;
@@ -103,8 +107,8 @@ export function JobPostForm({
     setSelectedTags(tags ?? []);
     setPendingSubRole(aiSubRole ?? null);
   };
-  const subRoles = getSubRoles(industry);
-  const nicheTags = getNicheTags(industry, subRole);
+  const subRoles = getSubRoles(industry, taxonomy);
+  const nicheTags = getNicheTags(industry, subRole, taxonomy);
 
   useEffect(() => {
     setValue("tags", selectedTags);
@@ -195,7 +199,7 @@ export function JobPostForm({
           <SelectField
             label="Industry"
             error={errors.industry?.message}
-            options={industries}
+            options={Object.keys(taxonomy)}
             {...register("industry", {
               onChange: () => {
                 setValue("subRole", "");
@@ -316,6 +320,19 @@ export function JobPostForm({
         <p className="-mt-3 text-xs text-muted-foreground">
           Salary in lakhs per annum. Leave blank to show &ldquo;Not disclosed&rdquo; — jobs with a salary get more responses.
         </p>
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-surface p-3">
+          <input
+            type="checkbox"
+            {...register("urgent")}
+            className="mt-0.5 h-4 w-4 rounded border-border accent-[var(--saffron)]"
+          />
+          <span className="text-sm">
+            <span className="font-medium">Urgent hiring</span>
+            <span className="block text-xs text-muted-foreground">
+              Shows an &ldquo;Urgent&rdquo; badge on the job. Use it only if you&apos;re hiring within days.
+            </span>
+          </span>
+        </label>
         <div className="sm:w-1/2">
           <SelectField
             label="Minimum education"

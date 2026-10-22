@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Navbar } from "@/components/layout/Navbar";
+import { BackToTop } from "@/components/layout/BackToTop";
+import { BulkHiringPopup } from "@/components/layout/BulkHiringPopup";
 import { Footer } from "@/components/layout/Footer";
 import { ThemeProvider } from "@/components/layout/ThemeProvider";
+import { paletteInitScript } from "@/lib/palettes";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -36,6 +39,9 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full`}
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: paletteInitScript }} />
+      </head>
       <body className="min-h-full flex flex-col antialiased">
         <ThemeProvider
           attribute="class"
@@ -46,6 +52,8 @@ export default function RootLayout({
           <Navbar />
           <main className="flex-1">{children}</main>
           <Footer />
+          <BackToTop />
+          <BulkHiringPopup />
         </ThemeProvider>
       </body>
     </html>
