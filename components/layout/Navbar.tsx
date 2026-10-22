@@ -32,7 +32,7 @@ const noopSubscribe = () => () => {};
 export function Navbar() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const { theme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
   const mounted = useMounted();
   // Read the signed-in marker cookie (set/cleared by the auth API) — no
   // network request. Re-read on every render, so navigation picks up changes.
@@ -88,11 +88,11 @@ export function Navbar() {
           <PaletteSwitcher />
           {mounted && (
             <button
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
               className="flex h-10 w-10 items-center justify-center rounded-xl border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
               aria-label="Toggle theme"
             >
-              {theme === "dark" ? (
+              {resolvedTheme === "dark" ? (
                 <Sun className="h-4 w-4" />
               ) : (
                 <Moon className="h-4 w-4" />

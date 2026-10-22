@@ -4,12 +4,12 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { History, Loader2, MapPin, RotateCcw, Search, SlidersHorizontal, X } from "lucide-react";
+import { History, LayoutGrid, Loader2, MapPin, RotateCcw, Rows3, Search, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { FilterPanel } from "@/components/jobs/FilterPanel";
 import { JobCard } from "@/components/jobs/JobCard";
-import { useRecentSearches } from "@/hooks/useStoredList";
+import { useRecentSearches, useStoredList } from "@/hooks/useStoredList";
 import { locations, sortOptions, type Taxonomy } from "@/lib/data/filterHierarchy";
 import {
   activeFilterCount,
@@ -68,6 +68,9 @@ export function JobSearch({
   const [city, setCity] = useState(query.location.length === 1 ? query.location[0] : "");
   const [searchFocused, setSearchFocused] = useState(false);
   const recent = useRecentSearches();
+  // Phones: one full card per row, or two compact ones (remembered per device).
+  const cardView = useStoredList("joblay-card-view", 1);
+  const twoPerRow = cardView.list[0] === "grid";
   // "Load more" keeps the current cards; any other change shows skeletons.
   const [loadingMore, setLoadingMore] = useState(false);
 
@@ -301,6 +304,32 @@ export function JobSearch({
               )}
             </p>
             <div className="flex items-center gap-2">
+              <div className="sm:hidden flex rounded-lg border border-border bg-surface p-0.5" role="group" aria-label="Cards per row">
+                {(
+                  [
+                    ["list", Rows3, "One job per row"],
+                    ["grid", LayoutGrid, "Two jobs per row"],
+                  ] as const
+                ).map(([value, Icon, label]) => {
+                  const on = (value === "grid") === twoPerRow;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => cardView.add(value)}
+                      aria-pressed={on}
+                      aria-label={label}
+                      title={label}
+                      className={cn(
+                        "flex h-8 w-8 items-center justify-center rounded-md transition-colors",
+                        on ? "bg-saffron text-white" : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      <Icon className="h-4 w-4" />
+                    </button>
+                  );
+                })}
+              </div>
               <label className="sr-only" htmlFor="sort">
                 Sort
               </label>
@@ -342,7 +371,10 @@ export function JobSearch({
 
           <div className={cn("transition-opacity", pending && loadingMore && "opacity-60")}>
             {pending && !loadingMore ? (
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4" aria-label="Loading jobs">
+              <div
+                className={cn("grid xl:grid-cols-2 gap-4", twoPerRow ? "grid-cols-2 max-sm:gap-2.5 sm:grid-cols-1" : "grid-cols-1")}
+                aria-label="Loading jobs"
+              >
                 {Array.from({ length: 4 }, (_, i) => (
                   <JobCardSkeleton key={i} />
                 ))}
@@ -389,9 +421,11 @@ export function JobSearch({
               )
             ) : (
               <>
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                <div
+                  className={cn("grid xl:grid-cols-2 gap-4", twoPerRow ? "grid-cols-2 max-sm:gap-2.5 sm:grid-cols-1" : "grid-cols-1")}
+                >
                   {result.jobs.map((job) => (
-                    <JobCard key={job.id} job={job} now={now} />
+                    <JobCard key={job.id} job={job} now={now} compact={twoPerRow} />
                   ))}
                 </div>
                 {result.hasMore && (
